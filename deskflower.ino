@@ -3,19 +3,24 @@
 #include "hal_display.h"
 #include "hal_peripherals.h"
 #include "hud_manager.h"
+#include "time_atmosphere.h"
 #include "renderer.h"
 
 uint32_t lastLoopTime = 0;
 uint32_t lastLogTime = 0;
 uint32_t lastHudUpdateTime = 0;
-uint8_t demoWeatherCycle = 0;
+uint8_t demoTimeStep = 0;
+
+// Pre-set demo hours to showcase all 5 diurnal phases on button clicks
+static const uint8_t demoHours[5] = {6, 12, 18, 20, 23}; // Dawn, Day, Golden Hour, Dusk, Night
+static const WeatherType demoWeathers[5] = {WEATHER_SUN, WEATHER_PARTLY_CLOUDY, WEATHER_SUN, WEATHER_RAIN, WEATHER_MOON};
 
 void setup() {
     #if ENABLE_SERIAL_LOG
     Serial.begin(115200);
     delay(200);
     Serial.println("\n==========================================");
-    Serial.println("🌸 Deskflower - Slice 2: HUD & Clock");
+    Serial.println("🌸 Deskflower - Slice 3: Diurnal Atmosphere");
     Serial.println("Target: ESP32-C6 (172x320 ST7789 IPS)");
     Serial.println("==========================================");
     #endif
@@ -35,11 +40,15 @@ void setup() {
         #endif
     }
 
-    // 3. Initialize HUD & Clock
+    // 3. Initialize HUD, Time & Atmosphere
     HUD.begin();
-    HUD.setTime(10, 42, 0, false); // Initial 10:42 AM
-    HUD.setWeather(WEATHER_SUN, 72, 64);
+    Atmosphere.begin();
+
+    HUD.setTime(demoHours[demoTimeStep], 42, 0, false);
+    HUD.setWeather(demoWeathers[demoTimeStep], 72, 64);
     HUD.setGeneration(1);
+
+    Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
 
     // 4. Initialize Main Renderer
     Renderer.begin();
@@ -56,24 +65,34 @@ void loop() {
     // 1. Poll Hardware Inputs
     Peripherals.update();
 
-    // 2. Handle Boot Button Click Interaction (Cycle weather glyph demo + pulse)
+    // 2. Handle Boot Button Click Interaction (Cycles Diurnal Phases: Dawn -> Day -> Golden -> Dusk -> Night)
     if (Peripherals.wasButtonClicked()) {
-        demoWeatherCycle = (demoWeatherCycle + 1) % 5;
-        WeatherType newWeather = static_cast<WeatherType>(demoWeatherCycle);
-        HUD.setWeather(newWeather, 68 + (demoWeatherCycle * 3), 50 + (demoWeatherCycle * 8));
+        demoTimeStep = (demoTimeStep + 1) % 5;
+        HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
+        HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
+        Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Button Clicked -> Weather Cycle: %d\n", demoWeatherCycle);
+        Serial.printf("[EVENT] Boot Click -> Switched to Phase: %s (Time: %02d:30)\n", 
+                      Atmosphere.getPhaseName(), HUD.getHour());
         #endif
-        // Visual cyan confirmation pulse on onboard RGB LED
-        Peripherals.pulseLed({0, 240, 255}, 800);
+
+        // Trigger interactive water / confirmation cyan pulse on LED
+        Peripherals.pulseLed({0, 240, 255}, 600);
     }
 
     // 3. Update HUD Time & Pulsing Colon Animation
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
-    if (deltaHud >= 16) { // ~60 Hz tick for smooth colon pulsing
+    if (deltaHud >= 16) { // ~60 Hz tick
         HUD.update(deltaHud);
+        Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         lastHudUpdateTime = currentMillis;
+
+        // Keep ambient LED in sync with active atmospheric color temperature
+        if (!Peripherals.isButtonPressed()) {
+            RGBColor amb = Atmosphere.getAmbientLedColor();
+            // Peripherals.setLedColor(amb);
+        }
     }
 
     // 4. 60 FPS Render Loop

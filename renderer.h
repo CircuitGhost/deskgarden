@@ -5,6 +5,7 @@
 #include "hal_display.h"
 #include "hal_peripherals.h"
 #include "hud_manager.h"
+#include "time_atmosphere.h"
 
 class MainRenderer {
 public:
