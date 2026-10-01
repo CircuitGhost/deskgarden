@@ -45,9 +45,8 @@ void MainRenderer::renderFrame() {
 }
 
 void MainRenderer::drawSlice1TestPattern() {
-    // 1. Top HUD Region (0 to 24px) - Deep Slate
-    Display.fillRect(0, 0, SCREEN_WIDTH, HUD_HEIGHT, rgb565(20, 24, 34));
-    Display.drawFastHLine(0, HUD_HEIGHT - 1, SCREEN_WIDTH, rgb565(60, 70, 90));
+    // 1. Top HUD Region (0 to 24px) - Rendered via HUD Manager
+    HUD.render(Display.getBackBuffer(), SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // 2. Canopy Chamber (24 to 280px) - Atmospheric Gradient with Dynamic Sine Waves
     Display.drawGradientV(0, HUD_HEIGHT, SCREEN_WIDTH, CANOPY_HEIGHT, rgb565(15, 20, 45), rgb565(45, 30, 60));

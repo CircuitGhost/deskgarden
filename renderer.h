@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "hal_display.h"
 #include "hal_peripherals.h"
+#include "hud_manager.h"
 
 class MainRenderer {
 public:
