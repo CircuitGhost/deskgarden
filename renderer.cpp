@@ -137,5 +137,5 @@ void MainRenderer::renderFrame() {
     // 7. Flush Full Frame to Display via SPI
     Display.flush();
 
-    _animPhase += 2;
+    _animPhase += 3;
 }

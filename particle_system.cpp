@@ -82,9 +82,9 @@ void ParticleSystem::spawnAmbient(TimePhase phase, WeatherType weather) {
         // Daytime / Dawn / Golden Hour: Oxygen bubble rising from substrate/foliage
         p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
         p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
-        p.vx = (rand() % 5 - 2);
-        p.vy = -(rand() % 8 + 8); // steady float upward
-        p.life = rand() % 50 + 60;
+        p.vx = (rand() % 9 - 4);
+        p.vy = -(rand() % 16 + 16); // steady, lively float upward
+        p.life = rand() % 40 + 40;
         p.maxLife = p.life;
         p.type = PARTICLE_OXYGEN_MOTE;
         p.size = (rand() % 2 == 0) ? 1 : 2;

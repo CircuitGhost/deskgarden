@@ -106,16 +106,18 @@ void loop() {
         Renderer.renderFrame();
     }
 
-    // 5. Periodic Diagnostics Telemetry
+    // 5. Periodic Diagnostics Telemetry (Non-blocking USB CDC)
     #if ENABLE_SERIAL_LOG
-    if (currentMillis - lastLogTime >= 3000) {
+    if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
-        Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Particles: %u | Free Heap: %u bytes\n",
-                      Renderer.getMeasuredFPS(),
-                      Renderer.getFrameRenderTimeUs(),
-                      Display.getLastBlitTimeUs(),
-                      Particles.getActiveCount(),
-                      esp_get_free_heap_size());
+        if (Serial.availableForWrite() >= 64) {
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Particles: %u | Free Heap: %u bytes\n",
+                          Renderer.getMeasuredFPS(),
+                          Renderer.getFrameRenderTimeUs(),
+                          Display.getLastBlitTimeUs(),
+                          Particles.getActiveCount(),
+                          esp_get_free_heap_size());
+        }
     }
     #endif
 
