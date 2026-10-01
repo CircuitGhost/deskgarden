@@ -1,0 +1,18 @@
+# Secrets and Local Configurations
+secrets.h
+
+# Build Artefacts and Compilation Output
+.pio/
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# OS / Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
