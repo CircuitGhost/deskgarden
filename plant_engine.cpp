@@ -172,7 +172,7 @@ void PlantEngine::generatePlant(const PlantGenome& genome) {
 
 void PlantEngine::growSegmentRecursive(int16_t startX, int16_t startY, uint8_t angle, 
                                       uint8_t depth, int8_t parentIdx, float length) {
-    if (_segmentCount >= MAX_PLANT_SEGMENTS || depth > _genome.maxDepth || length < 4.0f) {
+    if (_segmentCount >= MAX_PLANT_SEGMENTS || depth > 3 || length < 8.0f) {
         return;
     }
 
@@ -186,7 +186,7 @@ void PlantEngine::growSegmentRecursive(int16_t startX, int16_t startY, uint8_t a
     seg.angle = angle;
     seg.x0 = startX;
     seg.y0 = startY;
-    seg.isTerminal = true; // tentative, cleared if children spawn
+    seg.isTerminal = true;
     seg.flowerIndex = -1;
 
     // Calculate tip endpoint
@@ -200,13 +200,13 @@ void PlantEngine::growSegmentRecursive(int16_t startX, int16_t startY, uint8_t a
     seg.curX1 = seg.x1;
     seg.curY1 = seg.y1;
 
-    // Thickness tapering
+    // Organic thickness tapering: Trunk (4px) -> Main Branch (3px) -> Twigs (1-2px)
     if (depth == 0) seg.thickness = 4;
     else if (depth == 1) seg.thickness = 3;
     else if (depth == 2) seg.thickness = 2;
     else seg.thickness = 1;
 
-    // Color determination based on depth & stemHue palette
+    // Stem & Leaf palettes
     switch (_genome.stemHue) {
         case 1: // Emerald / Jade
             seg.stemColor = (depth <= 1) ? rgb565(30, 75, 45) : rgb565(55, 145, 80);
@@ -231,46 +231,47 @@ void PlantEngine::growSegmentRecursive(int16_t startX, int16_t startY, uint8_t a
             break;
     }
 
-    // Leaf attachment logic on branches (depth >= 1)
+    // Leaf attachment on side stems (depth 1 & 2)
     seg.hasLeaf = false;
     if (depth >= 1 && (randomRange(0, 100) < _genome.foliageDensity)) {
         seg.hasLeaf = true;
-        seg.leafAngle = (angle + ((nextRandom() & 1) ? 55 : -55)) & 255;
-        seg.leafLength = (uint8_t)randomRange(6, 11);
+        seg.leafAngle = (angle + ((angle < 192) ? -45 : 45)) & 255;
+        seg.leafLength = (uint8_t)randomRange(6, 10);
         seg.leafWidth = (uint8_t)randomRange(3, 5);
     }
 
-    // Branching termination check
-    bool spawnBranches = (depth < _genome.maxDepth) && (length >= 6.0f);
-
-    if (spawnBranches) {
+    // Phototropic Branching Hierarchy
+    if (depth < 2) {
         seg.isTerminal = false;
-        float nextLength = (length * _genome.lengthDecayPct) / 100.0f;
-        uint8_t splitAngle = (uint8_t)((_genome.branchAngle * 256) / 360);
+        float nextLength = (length * 75) / 100.0f;
 
-        // Left child branch
-        int16_t leftAngle = (int16_t)angle - splitAngle + (int16_t)randomRange(0, 6) - 3;
-        growSegmentRecursive(seg.x1, seg.y1, (uint8_t)(leftAngle & 255), depth + 1, curIdx, nextLength);
+        if (depth == 0) {
+            // Main trunk splits into Left, Right, and Center upward shoots
+            growSegmentRecursive(seg.x1, seg.y1, 174 /* left-up */, depth + 1, curIdx, nextLength);
+            growSegmentRecursive(seg.x1, seg.y1, 210 /* right-up */, depth + 1, curIdx, nextLength);
+            growSegmentRecursive(seg.x1, seg.y1, 192 /* straight up */, depth + 1, curIdx, nextLength * 0.95f);
+        } else {
+            // Sub-branches: phototropically steered upward (angles 155 to 229)
+            int16_t bLeft = (angle < 192) ? (angle - 12) : (angle - 18);
+            int16_t bRight = (angle > 192) ? (angle + 12) : (angle + 18);
 
-        // Right child branch
-        int16_t rightAngle = (int16_t)angle + splitAngle + (int16_t)randomRange(0, 6) - 3;
-        growSegmentRecursive(seg.x1, seg.y1, (uint8_t)(rightAngle & 255), depth + 1, curIdx, nextLength);
+            // Clamp angles between 150 (-60 deg) and 234 (+60 deg) so they never point down
+            if (bLeft < 150) bLeft = 150;
+            if (bRight > 234) bRight = 234;
 
-        // Center shoot for bonsai / orchids
-        if (depth == 0 || (_genome.phenotype == PHENOTYPE_BONSAI && depth == 1 && randomRange(0, 100) < 50)) {
-            int16_t centerAngle = (int16_t)angle + (int16_t)randomRange(0, 6) - 3;
-            growSegmentRecursive(seg.x1, seg.y1, (uint8_t)(centerAngle & 255), depth + 1, curIdx, nextLength * 0.88f);
+            growSegmentRecursive(seg.x1, seg.y1, (uint8_t)(bLeft & 255), depth + 1, curIdx, nextLength);
+            growSegmentRecursive(seg.x1, seg.y1, (uint8_t)(bRight & 255), depth + 1, curIdx, nextLength);
         }
     } else {
-        // Terminal node: Instantiate flower bud
-        if (_flowerCount < MAX_FLOWER_NODES && _genome.phenotype != PHENOTYPE_FERN) {
+        // Terminal tip: Blossom placement on the highest, most prominent branch tips
+        if (_flowerCount < 5 && _genome.phenotype != PHENOTYPE_FERN) {
             uint8_t fIdx = _flowerCount++;
             seg.flowerIndex = fIdx;
             FlowerInstance& flower = _flowers[fIdx];
             flower.terminalSegIdx = curIdx;
             flower.x = seg.x1;
             flower.y = seg.y1;
-            flower.stage = BLOOM_MATURE; // Mature on load, animates diurnally
+            flower.stage = BLOOM_MATURE;
             flower.bloomProgress = 1.0f;
             flower.diurnalOpenRatio = 1.0f;
             flower.pollinated = false;
@@ -421,34 +422,44 @@ void PlantEngine::fertilizeFlower(uint8_t flowerIdx) {
 }
 
 void PlantEngine::updatePhysics(uint32_t deltaMs, float windStrength) {
-    _windPhase += 2;
-    _gustPhase += 1;
+    // Calm, slow phase advancement (~8-10 seconds per gentle breath cycle)
+    static uint8_t tickCount = 0;
+    tickCount++;
+    if (tickCount & 1) {
+        _windPhase++;
+    }
+    if ((tickCount & 3) == 0) {
+        _gustPhase++;
+    }
 
-    int16_t gustFactor = 90 + (lutSin(_gustPhase) >> 2); // 60 to 120%
+    // Gentle organic ambient breath: Primary slow wave + subtle harmonic
+    int16_t primaryWave = lutSin(_windPhase);                             // -127 to +127
+    int16_t harmonicWave = lutSin((uint8_t)(_windPhase * 2 + 48)) >> 3;  // Subtle harmonic flutter
+    int16_t totalBreeze = primaryWave + harmonicWave;                    // -143 to +143
 
-    // Forward kinematics
+    // Coherent forward kinematics (whole plant sways harmoniously with breeze)
     for (uint8_t i = 0; i < _segmentCount; i++) {
         PlantSegment& seg = _segments[i];
         if (!seg.active) continue;
 
         if (seg.parentIndex < 0) {
-            // Root Trunk
+            // Root Trunk: Anchored to soil, gentle base flex
             seg.curX0 = seg.x0;
             seg.curY0 = seg.y0;
 
-            int16_t trunkSway = (lutSin(_windPhase) * gustFactor * _genome.swayFlexibility) >> 10;
+            int16_t trunkSway = (totalBreeze * _genome.swayFlexibility) >> 8; // ~1-2 angle units (~1.5 deg)
             uint8_t effAngle = (uint8_t)((seg.angle + trunkSway) & 255);
 
             int16_t curLen = (int16_t)(seg.length * _growthProgress);
             seg.curX1 = seg.curX0 + (lutCos(effAngle) * curLen) / 127;
             seg.curY1 = seg.curY0 + (lutSin(effAngle) * curLen) / 127;
         } else {
-            // Child Branch Segment
+            // Child Branch Segment: Coherently leans with parent
             const PlantSegment& parent = _segments[seg.parentIndex];
             seg.curX0 = parent.curX1;
             seg.curY0 = parent.curY1;
 
-            int16_t branchSway = (lutSin((uint8_t)(_windPhase + (seg.depth * 38))) * gustFactor * _genome.swayFlexibility * (seg.depth + 1)) >> 9;
+            int16_t branchSway = (totalBreeze * _genome.swayFlexibility * (seg.depth + 1)) >> 8;
             uint8_t effAngle = (uint8_t)((seg.angle + branchSway) & 255);
 
             int16_t curLen = (int16_t)(seg.length * _growthProgress);
@@ -636,8 +647,7 @@ void PlantEngine::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHe
         const FlowerInstance& flower = _flowers[i];
         if (flower.stage == BLOOM_VEGETATIVE) continue;
 
-        uint8_t stemAngle = (flower.terminalSegIdx < _segmentCount) ? _segments[flower.terminalSegIdx].angle : 192;
-        drawFlower(buffer, flower.x, flower.y, stemAngle, 
+        drawFlower(buffer, flower.x, flower.y, 192 /* upright face to sky */, 
                    flower.diurnalOpenRatio, flower.stage, screenWidth, screenHeight);
     }
 }

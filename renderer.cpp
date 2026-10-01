@@ -121,25 +121,16 @@ void MainRenderer::renderFrame() {
         }
     }
 
-    // 5. Render Harmonic Fluid Motion Wave (Pure Integer LUT lookup)
-    int16_t centerY = HUD_HEIGHT + (CANOPY_HEIGHT / 2) + 20;
-    for (int16_t x = 0; x < SCREEN_WIDTH; x++) {
-        int16_t wave1 = (fastSin256((uint8_t)((x * 2) + _animPhase)) * 14) >> 7;
-        int16_t wave2 = (fastSin256((uint8_t)((x * 4) - (_animPhase * 2))) * 6) >> 7;
-        int16_t wy = centerY + wave1 + wave2;
-        Display.drawPixel(x, wy, rgb565(180, 235, 255));
-    }
-
-    // 6. Render Procedural Botanical Plant (Stems, Branches, Leaves)
+    // 5. Render Procedural Botanical Plant (Stems, Branches, Leaves & Blossoms)
     Plant.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    // 7. Render Ambient Particles
+    // 6. Render Ambient Particles
     Particles.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     _lastFrameRenderTimeUs = micros() - startUs;
 
-    // 8. Flush Full Frame to Display via SPI
+    // 7. Flush Full Frame to Display via SPI
     Display.flush();
 
-    _animPhase += 3;
+    _animPhase += 2;
 }
