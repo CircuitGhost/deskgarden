@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "particle_system.h"
+#include "plant_engine.h"
 
 MainRenderer Renderer;
 
@@ -129,12 +130,15 @@ void MainRenderer::renderFrame() {
         Display.drawPixel(x, wy, rgb565(180, 235, 255));
     }
 
-    // 6. Render Ambient Particles
+    // 6. Render Procedural Botanical Plant (Stems, Branches, Leaves)
+    Plant.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 7. Render Ambient Particles
     Particles.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     _lastFrameRenderTimeUs = micros() - startUs;
 
-    // 7. Flush Full Frame to Display via SPI
+    // 8. Flush Full Frame to Display via SPI
     Display.flush();
 
     _animPhase += 3;

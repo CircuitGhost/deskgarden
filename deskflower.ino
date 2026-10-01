@@ -5,6 +5,7 @@
 #include "hud_manager.h"
 #include "time_atmosphere.h"
 #include "particle_system.h"
+#include "plant_engine.h"
 #include "renderer.h"
 
 // Explicit prototypes to prevent Arduino preprocessor insertion bugs
@@ -35,7 +36,7 @@ void setup() {
     Serial.println("[HAL] Peripherals initialized.");
     #endif
 
-    // 2. Initialize Display Pipeline (Arduino_GFX ST7789 + 11KB Band Buffer)
+    // 2. Initialize Display Pipeline (Arduino_GFX ST7789 + 110KB Canvas Framebuffer)
     bool displayOk = Display.begin();
     #if ENABLE_SERIAL_LOG
     if (displayOk) {
@@ -46,10 +47,11 @@ void setup() {
     Serial.printf("[SYSTEM] Free heap after display init: %u bytes\n", ESP.getFreeHeap());
     #endif
 
-    // 3. Initialize HUD, Time, Atmosphere & Particles
+    // 3. Initialize HUD, Time, Atmosphere, Particles & Botanical Plant Engine
     HUD.begin();
     Atmosphere.begin();
     Particles.begin();
+    Plant.begin();
 
     HUD.setTime(demoHours[demoTimeStep], 42, 0, false);
     HUD.setWeather(demoWeathers[demoTimeStep], 72, 64);
@@ -76,6 +78,14 @@ void loop() {
     // 2. Handle Boot Button Click Interaction (Cycles Diurnal Phases + triggers Raindrop Cascade)
     if (Peripherals.wasButtonClicked()) {
         demoTimeStep = (demoTimeStep + 1) % 5;
+        if (demoTimeStep == 0) {
+            // New generation cycle: mutate botanical genome
+            static uint8_t genCounter = 1;
+            genCounter++;
+            HUD.setGeneration(genCounter);
+            Plant.generateFromSeed(millis() ^ 0x5A5A);
+        }
+
         HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
         HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
@@ -84,19 +94,21 @@ void loop() {
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Weather: %d | Active Particles: %u\n", 
-                      Atmosphere.getPhaseName(), HUD.getHour(), demoWeathers[demoTimeStep], Particles.getActiveCount());
+        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Weather: %d | Segments: %u | Active Particles: %u\n", 
+                      Atmosphere.getPhaseName(), HUD.getHour(), demoWeathers[demoTimeStep], 
+                      Plant.getSegmentCount(), Particles.getActiveCount());
         #endif
 
         Peripherals.pulseLed({0, 240, 255}, 600);
     }
 
-    // 3. Update HUD Time & Pulsing Colon Animation (~60 Hz)
+    // 3. Update HUD Time, Colon Animation, Particles & Botanical Physics (~60 Hz)
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
+        Plant.updatePhysics(deltaHud);
         lastHudUpdateTime = currentMillis;
     }
 
@@ -111,10 +123,11 @@ void loop() {
     if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Particles: %u | Free Heap: %u bytes\n",
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Segments: %u | Particles: %u | Free Heap: %u bytes\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           Display.getLastBlitTimeUs(),
+                          Plant.getSegmentCount(),
                           Particles.getActiveCount(),
                           esp_get_free_heap_size());
         }

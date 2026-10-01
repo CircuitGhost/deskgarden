@@ -2,6 +2,8 @@
 
 ParticleSystem Particles;
 
+#include "plant_engine.h"
+
 // Precomputed 32-step sine table for integer math on RISC-V (values -127 to +127)
 static const int8_t SIN_TABLE_32[32] = {
     0, 24, 48, 70, 89, 105, 117, 124, 
@@ -79,9 +81,17 @@ void ParticleSystem::spawnAmbient(TimePhase phase, WeatherType weather) {
         p.active = true;
     } 
     else {
-        // Daytime / Dawn / Golden Hour: Oxygen bubble rising from substrate/foliage
-        p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
-        p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
+        // Daytime / Dawn / Golden Hour: Photosynthetic oxygen bubble rising from foliage
+        LeafNodePos leaves[16];
+        uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
+        if (leafCount > 0 && (rand() % 100 < 80)) {
+            uint8_t lIdx = rand() % leafCount;
+            p.x = leaves[lIdx].x << 4;
+            p.y = leaves[lIdx].y << 4;
+        } else {
+            p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
+            p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
+        }
         p.vx = (rand() % 9 - 4);
         p.vy = -(rand() % 16 + 16); // steady, lively float upward
         p.life = rand() % 40 + 40;
