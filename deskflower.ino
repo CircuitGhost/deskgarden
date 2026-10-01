@@ -83,7 +83,14 @@ void loop() {
             static uint8_t genCounter = 1;
             genCounter++;
             HUD.setGeneration(genCounter);
-            Plant.generateFromSeed(millis() ^ 0x5A5A);
+            Plant.generateFromSeed(millis() ^ 0x5A5A, genCounter % 4);
+
+            #if ENABLE_SERIAL_LOG
+            char code[20];
+            Plant.getSeedCode(code);
+            Serial.printf("[GENOME] Generation %u: %s | Seed Code: %s\n", 
+                          genCounter, Plant.getPhenotypeName(), code);
+            #endif
         }
 
         HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
@@ -94,9 +101,9 @@ void loop() {
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Weather: %d | Segments: %u | Active Particles: %u\n", 
+        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Weather: %d | Stems: %u | Flowers: %u | Particles: %u\n", 
                       Atmosphere.getPhaseName(), HUD.getHour(), demoWeathers[demoTimeStep], 
-                      Plant.getSegmentCount(), Particles.getActiveCount());
+                      Plant.getSegmentCount(), Plant.getFlowerCount(), Particles.getActiveCount());
         #endif
 
         Peripherals.pulseLed({0, 240, 255}, 600);
@@ -108,6 +115,7 @@ void loop() {
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
+        Plant.updateLifecycle(deltaHud, Atmosphere.getCurrentPhase());
         Plant.updatePhysics(deltaHud);
         lastHudUpdateTime = currentMillis;
     }
@@ -123,11 +131,12 @@ void loop() {
     if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Segments: %u | Particles: %u | Free Heap: %u bytes\n",
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Stems: %u | Flowers: %u | Particles: %u | Free Heap: %u bytes\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           Display.getLastBlitTimeUs(),
                           Plant.getSegmentCount(),
+                          Plant.getFlowerCount(),
                           Particles.getActiveCount(),
                           esp_get_free_heap_size());
         }

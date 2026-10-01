@@ -14,7 +14,9 @@ enum ParticleType : uint8_t {
     PARTICLE_OXYGEN_MOTE,       // Daylight: rising translucent oxygen bubble
     PARTICLE_FIREFLY,           // Dusk/Night: wandering bioluminescent mote
     PARTICLE_MIST_DROP,         // Rain/Humid: drifting condensation droplet
-    PARTICLE_RAIN_CASCADE       // User interaction: falling raindrop burst
+    PARTICLE_RAIN_CASCADE,      // User interaction: falling raindrop burst
+    PARTICLE_POLLEN_MOTE,       // Golden Hour/Day: floating golden flower pollen
+    PARTICLE_SEED_MOTE          // Pollination: fertile seed falling to soil
 };
 
 struct Particle {

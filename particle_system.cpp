@@ -80,6 +80,47 @@ void ParticleSystem::spawnAmbient(TimePhase phase, WeatherType weather) {
         p.phase = rand() % 32;
         p.active = true;
     } 
+    else if (phase == PHASE_GOLDEN_HOUR || (phase == PHASE_DAYLIGHT && rand() % 100 < 45)) {
+        // Pollen grain release from mature flowers
+        FlowerNodePos flowers[MAX_FLOWER_NODES];
+        uint8_t fCount = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
+        if (fCount > 0) {
+            uint8_t fIdx = rand() % fCount;
+            if (flowers[fIdx].isMature) {
+                p.x = flowers[fIdx].x << 4;
+                p.y = (flowers[fIdx].y - 2) << 4;
+                p.vx = (rand() % 15 - 5); // drift with breeze
+                p.vy = (rand() % 9 - 4);  // gentle floating flutter
+                p.life = rand() % 50 + 50;
+                p.maxLife = p.life;
+                p.type = PARTICLE_POLLEN_MOTE;
+                p.size = 1;
+                p.phase = rand() % 32;
+                p.active = true;
+                return;
+            }
+        }
+
+        // Fallback: Daytime photosynthetic oxygen bubble rising from foliage
+        LeafNodePos leaves[16];
+        uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
+        if (leafCount > 0 && (rand() % 100 < 80)) {
+            uint8_t lIdx = rand() % leafCount;
+            p.x = leaves[lIdx].x << 4;
+            p.y = leaves[lIdx].y << 4;
+        } else {
+            p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
+            p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
+        }
+        p.vx = (rand() % 9 - 4);
+        p.vy = -(rand() % 16 + 16); // steady, lively float upward
+        p.life = rand() % 40 + 40;
+        p.maxLife = p.life;
+        p.type = PARTICLE_OXYGEN_MOTE;
+        p.size = (rand() % 2 == 0) ? 1 : 2;
+        p.phase = rand() % 32;
+        p.active = true;
+    }
     else {
         // Daytime / Dawn / Golden Hour: Photosynthetic oxygen bubble rising from foliage
         LeafNodePos leaves[16];
@@ -127,7 +168,7 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
     uint32_t now = millis();
 
     // Spawn ambient particle at intervals (e.g. every 220ms)
-    uint32_t spawnInterval = (weather == WEATHER_RAIN) ? 120 : 250;
+    uint32_t spawnInterval = (weather == WEATHER_RAIN) ? 120 : 220;
     if (now - _lastSpawnTime >= spawnInterval) {
         spawnAmbient(phase, weather);
         _lastSpawnTime = now;
@@ -157,6 +198,15 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             // Gentle side-to-side harmonic drift while rising
             int16_t waveX = fastSin(p.phase) >> 4;
             p.x += (p.vx + waveX);
+            p.y += p.vy;
+        } else if (p.type == PARTICLE_POLLEN_MOTE) {
+            // Floating drifting pollen grain
+            int16_t driftY = fastSin(p.phase + (i * 3)) >> 5;
+            p.x += (p.vx + (fastSin(p.phase) >> 4));
+            p.y += (p.vy + driftY);
+        } else if (p.type == PARTICLE_SEED_MOTE) {
+            // Falling seed pod particle
+            p.x += p.vx;
             p.y += p.vy;
         } else {
             p.x += p.vx;
@@ -207,6 +257,18 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
                 buffer[(py + 1) * screenWidth + (px + 1)] = rgb565(140, 210, 240);
             }
         } 
+        else if (p.type == PARTICLE_POLLEN_MOTE) {
+            // Golden glowing pollen grain
+            uint16_t color = rgb565(255, 225, 60);
+            buffer[py * screenWidth + px] = color;
+            if (py > 0 && px > 0 && (p.phase & 4)) {
+                buffer[(py - 1) * screenWidth + px] = rgb565(200, 160, 30);
+            }
+        }
+        else if (p.type == PARTICLE_SEED_MOTE) {
+            uint16_t color = rgb565(175, 125, 45);
+            buffer[py * screenWidth + px] = color;
+        }
         else if (p.type == PARTICLE_RAIN_CASCADE || p.type == PARTICLE_MIST_DROP) {
             uint16_t color = (p.type == PARTICLE_RAIN_CASCADE) ? rgb565(120, 220, 255) : rgb565(170, 200, 230);
             buffer[py * screenWidth + px] = color;
