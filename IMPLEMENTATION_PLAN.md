@@ -166,3 +166,26 @@ flowchart TD
 * **Verification & Acceptance Criteria:**
   * Stable 24/7 continuous operation without memory leaks, heap fragmentation, or thermal throttling.
   * Deskflower provides an enchanting, zero-maintenance, aesthetically calming workstation companion.
+
+---
+
+## Appendix: Verified Hardware Architecture & Lessons Learned (Waveshare ESP32-C6-LCD-1.47)
+
+### 1. Pin Configuration
+| Signal | GPIO | Function / Notes |
+| :--- | :--- | :--- |
+| `PIN_LCD_MOSI` | **GPIO 6** | Hardware SPI MOSI (SDA) |
+| `PIN_LCD_SCLK` | **GPIO 7** | Hardware SPI SCLK (SCL) |
+| `PIN_LCD_CS` | **GPIO 14** | LCD Chip Select |
+| `PIN_LCD_DC` | **GPIO 15** | LCD Data / Command |
+| `PIN_LCD_RST` | **GPIO 21** | LCD Hardware Reset |
+| `PIN_LCD_BL` | **GPIO 22** | Backlight Control (Active HIGH) |
+| `PIN_SD_CS` | **GPIO 4** | **Shared SPI Bus Isolation:** Must be set to `OUTPUT` and held `HIGH` on boot |
+| `PIN_RGB_LED` | **GPIO 8** | Onboard WS2812 Addressable RGB LED |
+| `PIN_BOOT_BUTTON` | **GPIO 9** | Onboard Boot / User Interaction Button (Active LOW) |
+
+### 2. Display Driver & Geometry
+* **Driver:** `Arduino_GFX_Library` using `Arduino_HWSPI` and `Arduino_ST7789`.
+* **Geometry:** Width = `172`, Height = `320`, Column Offset = `34`, Row Offset = `0`, IPS Inversion = `true`.
+* **Stack Size:** Arduino `loopTask` stack must be expanded (`getArduinoLoopTaskStackSize() -> 32768`) to prevent stack protection faults on RISC-V.
+* **Arduino CLI Prototype Protection:** Explicit `void setup();` and `void loop();` prototypes must be declared in `.ino` to prevent `arduino-ctags` from injecting recursive call artifacts into `setup()`.

@@ -35,6 +35,10 @@
 #define PIN_LCD_BL           22    // Backlight PWM pin
 #endif
 
+#ifndef PIN_SD_CS
+#define PIN_SD_CS            4     // MicroSD Card CS (Shared SPI; MUST be driven HIGH)
+#endif
+
 // SPI Clock Frequency (ST7789 supports up to 40MHz–80MHz)
 #define LCD_SPI_FREQ         40000000
 

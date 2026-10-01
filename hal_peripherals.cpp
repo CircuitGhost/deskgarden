@@ -19,9 +19,8 @@ PeripheralsHAL::PeripheralsHAL()
 
 void PeripheralsHAL::begin() {
     pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
-    
-    // Initialize RGB LED to off
-    setLedColor(0, 0, 0);
+    pinMode(PIN_RGB_LED, OUTPUT);
+    digitalWrite(PIN_RGB_LED, LOW);
 }
 
 void PeripheralsHAL::update() {

@@ -86,6 +86,11 @@ void drawChar5x7(uint16_t* buffer, int16_t bufWidth, int16_t bufHeight,
         index = 0; // Space / unknown
     }
 
+    uint8_t totalGlyphs = sizeof(micro_font_5x7) / sizeof(micro_font_5x7[0]);
+    if (index >= totalGlyphs) {
+        index = 0;
+    }
+
     const uint8_t* charCols = micro_font_5x7[index];
 
     for (int col = 0; col < 5; col++) {
