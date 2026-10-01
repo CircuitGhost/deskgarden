@@ -41,8 +41,8 @@ public:
     // User interaction: Watering cascade
     void triggerWateringCascade(uint8_t count = 20);
     
-    // Band renderer (draws only particles intersecting the band)
-    void renderBand(uint16_t* buffer, int16_t bandGlobalY0, int16_t bandHeight, int16_t screenWidth);
+    // Full Frame Renderer
+    void render(uint16_t* buffer, int16_t screenWidth = SCREEN_WIDTH, int16_t screenHeight = SCREEN_HEIGHT);
 
     uint8_t getActiveCount() const;
 

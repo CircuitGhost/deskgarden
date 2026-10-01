@@ -3,17 +3,73 @@
 
 MainRenderer Renderer;
 
+// 256-entry integer sine LUT (-127 to +127) for instant 1-cycle trig calculations
+static const int8_t SIN_TABLE_256[256] = {
+       0,    3,    6,    9,   12,   16,   19,   22,   25,   28,   31,   34,   37,   40,   43,   46,
+      49,   51,   54,   57,   60,   63,   65,   68,   71,   73,   76,   78,   81,   83,   85,   88,
+      90,   92,   94,   96,   98,  100,  102,  104,  106,  107,  109,  111,  112,  113,  115,  116,
+     117,  118,  120,  121,  122,  122,  123,  124,  125,  125,  126,  126,  126,  127,  127,  127,
+     127,  127,  127,  127,  126,  126,  126,  125,  125,  124,  123,  122,  122,  121,  120,  118,
+     117,  116,  115,  113,  112,  111,  109,  107,  106,  104,  102,  100,   98,   96,   94,   92,
+      90,   88,   85,   83,   81,   78,   76,   73,   71,   68,   65,   63,   60,   57,   54,   51,
+      49,   46,   43,   40,   37,   34,   31,   28,   25,   22,   19,   16,   12,    9,    6,    3,
+       0,   -3,   -6,   -9,  -12,  -16,  -19,  -22,  -25,  -28,  -31,  -34,  -37,  -40,  -43,  -46,
+     -49,  -51,  -54,  -57,  -60,  -63,  -65,  -68,  -71,  -73,  -76,  -78,  -81,  -83,  -85,  -88,
+     -90,  -92,  -94,  -96,  -98, -100, -102, -104, -106, -107, -109, -111, -112, -113, -115, -116,
+    -117, -118, -120, -121, -122, -122, -123, -124, -125, -125, -126, -126, -126, -127, -127, -127,
+    -127, -127, -127, -127, -126, -126, -126, -125, -125, -124, -123, -122, -122, -121, -120, -118,
+    -117, -116, -115, -113, -112, -111, -109, -107, -106, -104, -102, -100,  -98,  -96,  -94,  -92,
+     -90,  -88,  -85,  -83,  -81,  -78,  -76,  -73,  -71,  -68,  -65,  -63,  -60,  -57,  -54,  -51,
+     -49,  -46,  -43,  -40,  -37,  -34,  -31,  -28,  -25,  -22,  -19,  -16,  -12,   -9,   -6,   -3,
+};
+
+static inline int8_t fastSin256(uint8_t angle) {
+    return SIN_TABLE_256[angle];
+}
+
 MainRenderer::MainRenderer()
     : _lastFrameTime(0),
       _frameCount(0),
       _lastFpsCalcTime(0),
       _currentFps(0.0f),
       _lastFrameRenderTimeUs(0),
-      _animationPhase(0.0f) {}
+      _animPhase(0),
+      _lastSkyTopR(0), _lastSkyTopG(0), _lastSkyTopB(0),
+      _lastSkyBottomR(0), _lastSkyBottomG(0), _lastSkyBottomB(0) {
+    for (int16_t i = 0; i < CANOPY_HEIGHT; i++) {
+        _cachedSkyColors[i] = COLOR_BLACK;
+    }
+}
 
 void MainRenderer::begin() {
     _lastFrameTime = millis();
     _lastFpsCalcTime = millis();
+}
+
+void MainRenderer::updateSkyGradientCache(const AtmospherePalette& pal) {
+    if (pal.skyTopR == _lastSkyTopR && pal.skyTopG == _lastSkyTopG && pal.skyTopB == _lastSkyTopB &&
+        pal.skyBottomR == _lastSkyBottomR && pal.skyBottomG == _lastSkyBottomG && pal.skyBottomB == _lastSkyBottomB) {
+        return; // Palette unchanged
+    }
+
+    _lastSkyTopR = pal.skyTopR; _lastSkyTopG = pal.skyTopG; _lastSkyTopB = pal.skyTopB;
+    _lastSkyBottomR = pal.skyBottomR; _lastSkyBottomG = pal.skyBottomG; _lastSkyBottomB = pal.skyBottomB;
+
+    // Fixed-point 16.16 gradient interpolation (Zero float overhead)
+    int32_t r16 = (int32_t)pal.skyTopR << 16;
+    int32_t g16 = (int32_t)pal.skyTopG << 16;
+    int32_t b16 = (int32_t)pal.skyTopB << 16;
+
+    int32_t dr16 = (((int32_t)pal.skyBottomR - pal.skyTopR) << 16) / (CANOPY_HEIGHT - 1);
+    int32_t dg16 = (((int32_t)pal.skyBottomG - pal.skyTopG) << 16) / (CANOPY_HEIGHT - 1);
+    int32_t db16 = (((int32_t)pal.skyBottomB - pal.skyTopB) << 16) / (CANOPY_HEIGHT - 1);
+
+    for (int16_t y = 0; y < CANOPY_HEIGHT; y++) {
+        _cachedSkyColors[y] = rgb565((uint8_t)(r16 >> 16), (uint8_t)(g16 >> 16), (uint8_t)(b16 >> 16));
+        r16 += dr16;
+        g16 += dg16;
+        b16 += db16;
+    }
 }
 
 void MainRenderer::renderFrame() {
@@ -28,92 +84,58 @@ void MainRenderer::renderFrame() {
     }
 
     AtmospherePalette pal = Atmosphere.getCurrentPalette();
+    updateSkyGradientCache(pal);
 
-    // 1. Precalculate harmonic motion wave once per frame (172 points instead of 1,720)
-    int16_t waveY[SCREEN_WIDTH];
+    uint16_t* fb = Display.getFramebuffer();
+    if (!fb) return;
+
+    // 1. Render Top HUD Bar (y = 0 .. HUD_HEIGHT - 1)
+    HUD.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // 2. Render Diurnal Sky Canopy (y = HUD_HEIGHT .. HUD_HEIGHT + CANOPY_HEIGHT - 1)
+    for (int16_t skyY = 0; skyY < CANOPY_HEIGHT; skyY++) {
+        Display.drawFastHLine(0, HUD_HEIGHT + skyY, SCREEN_WIDTH, _cachedSkyColors[skyY]);
+    }
+
+    // 3. Render Substrate & Soil (y = HUD_HEIGHT + CANOPY_HEIGHT .. SCREEN_HEIGHT - 1)
+    Display.drawFastHLine(0, HUD_HEIGHT + CANOPY_HEIGHT, SCREEN_WIDTH, rgb565(85, 140, 70)); // Grass line
+    Display.fillRect(0, HUD_HEIGHT + CANOPY_HEIGHT + 1, SCREEN_WIDTH, SUBSTRATE_HEIGHT - 1, rgb565(28, 20, 16)); // Soil
+
+    // 4. Render Night Stars / Celestial Twinkle (Integer lookup)
+    if (pal.starOpacity > 0.05f) {
+        static const uint8_t starCoords[16][2] = {
+            {20, 35}, {45, 60}, {85, 40}, {130, 50}, {155, 75},
+            {30, 110}, {70, 95}, {115, 120}, {145, 140}, {15, 160},
+            {60, 180}, {100, 165}, {140, 200}, {35, 220}, {80, 240}, {125, 230}
+        };
+        for (int i = 0; i < 16; i++) {
+            int16_t sx = starCoords[i][0];
+            int16_t sy = starCoords[i][1];
+            int8_t s = fastSin256((uint8_t)((_animPhase * 3) + (i * 16)));
+            uint8_t twinkle255 = 128 + (s >> 1); // 64 to 191
+            uint8_t starVal = (uint8_t)((255 * pal.starOpacity * twinkle255) / 255);
+            if (starVal > 20) {
+                Display.drawPixel(sx, sy, rgb565(starVal, starVal, (uint8_t)(starVal * 0.9f)));
+            }
+        }
+    }
+
+    // 5. Render Harmonic Fluid Motion Wave (Pure Integer LUT lookup)
     int16_t centerY = HUD_HEIGHT + (CANOPY_HEIGHT / 2) + 20;
     for (int16_t x = 0; x < SCREEN_WIDTH; x++) {
-        float wave1 = sinf((x * 0.04f) + _animationPhase) * 16.0f;
-        float wave2 = sinf((x * 0.08f) - (_animationPhase * 1.5f)) * 8.0f;
-        waveY[x] = centerY + (int16_t)(wave1 + wave2);
+        int16_t wave1 = (fastSin256((uint8_t)((x * 2) + _animPhase)) * 14) >> 7;
+        int16_t wave2 = (fastSin256((uint8_t)((x * 4) - (_animPhase * 2))) * 6) >> 7;
+        int16_t wy = centerY + wave1 + wave2;
+        Display.drawPixel(x, wy, rgb565(180, 235, 255));
     }
 
-    // 2. 10-Band Render Loop (Only 11 KB RAM utilized!)
-    for (uint8_t b = 0; b < NUM_BANDS; b++) {
-        int16_t bandGlobalY0 = b * BAND_HEIGHT;
-
-        // Render each row in this band
-        for (int16_t localY = 0; localY < BAND_HEIGHT; localY++) {
-            int16_t globalY = bandGlobalY0 + localY;
-
-            if (globalY < HUD_HEIGHT) {
-                // 1. Top HUD Row
-                uint8_t r = 16 + (globalY * 6 / HUD_HEIGHT);
-                uint8_t g = 20 + (globalY * 8 / HUD_HEIGHT);
-                uint8_t b_col = 28 + (globalY * 10 / HUD_HEIGHT);
-                uint16_t rowCol = (globalY == HUD_HEIGHT - 1) ? rgb565(55, 65, 82) : rgb565(r, g, b_col);
-                Display.drawFastHLineLocal(0, localY, SCREEN_WIDTH, rowCol);
-            } 
-            else if (globalY < (HUD_HEIGHT + CANOPY_HEIGHT)) {
-                // 2. Diurnal Sky Gradient Row
-                int16_t skyY = globalY - HUD_HEIGHT;
-                float factor = (float)skyY / (float)(CANOPY_HEIGHT - 1);
-                uint8_t r = (uint8_t)(pal.skyTopR + factor * (pal.skyBottomR - pal.skyTopR));
-                uint8_t g = (uint8_t)(pal.skyTopG + factor * (pal.skyBottomG - pal.skyTopG));
-                uint8_t b_col = (uint8_t)(pal.skyTopB + factor * (pal.skyBottomB - pal.skyTopB));
-                Display.drawFastHLineLocal(0, localY, SCREEN_WIDTH, rgb565(r, g, b_col));
-            } 
-            else {
-                // 3. Substrate & Soil Row
-                int16_t subY = globalY - (HUD_HEIGHT + CANOPY_HEIGHT);
-                uint16_t rowCol = (subY == 0) ? rgb565(85, 140, 70) : rgb565(28, 20, 16);
-                Display.drawFastHLineLocal(0, localY, SCREEN_WIDTH, rowCol);
-            }
-        }
-
-        // Draw HUD Elements if in Band 0
-        if (b == 0) {
-            HUD.render(Display.getBandBuffer(), SCREEN_WIDTH, BAND_HEIGHT);
-        }
-
-        // Draw Celestial Sun Disc / Night Stars
-        if (pal.starOpacity > 0.05f) {
-            static const uint8_t starCoords[16][2] = {
-                {20, 35}, {45, 60}, {85, 40}, {130, 50}, {155, 75},
-                {30, 110}, {70, 95}, {115, 120}, {145, 140}, {15, 160},
-                {60, 180}, {100, 165}, {140, 200}, {35, 220}, {80, 240}, {125, 230}
-            };
-            for (int i = 0; i < 16; i++) {
-                int16_t sx = starCoords[i][0];
-                int16_t sy = starCoords[i][1];
-                if (sy >= bandGlobalY0 && sy < (bandGlobalY0 + BAND_HEIGHT)) {
-                    float twinkle = 0.5f + 0.5f * sinf(_animationPhase * 2.5f + (i * 1.3f));
-                    uint8_t starVal = (uint8_t)(255 * pal.starOpacity * twinkle);
-                    if (starVal > 20) {
-                        Display.drawPixelLocal(sx, sy - bandGlobalY0, rgb565(starVal, starVal, (uint8_t)(starVal * 0.9f)));
-                    }
-                }
-            }
-        }
-
-        // Draw Harmonic Fluid Motion Wave
-        for (int16_t x = 0; x < SCREEN_WIDTH; x++) {
-            int16_t wy = waveY[x];
-            if (wy >= bandGlobalY0 && wy < (bandGlobalY0 + BAND_HEIGHT)) {
-                Display.drawPixelLocal(x, wy - bandGlobalY0, rgb565(180, 235, 255));
-            }
-        }
-
-        // Draw Ambient Particles in this band
-        Particles.renderBand(Display.getBandBuffer(), bandGlobalY0, BAND_HEIGHT, SCREEN_WIDTH);
-
-        // Blit band to LCD
-        Display.pushBand(b);
-    }
+    // 6. Render Ambient Particles
+    Particles.render(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     _lastFrameRenderTimeUs = micros() - startUs;
-    _animationPhase += 0.05f;
-    if (_animationPhase > 2 * PI) {
-        _animationPhase -= 2 * PI;
-    }
+
+    // 7. Flush Full Frame to Display via SPI
+    Display.flush();
+
+    _animPhase += 2;
 }

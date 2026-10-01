@@ -23,10 +23,14 @@ private:
     uint32_t _lastFpsCalcTime;
     float _currentFps;
     uint32_t _lastFrameRenderTimeUs;
-    float _animationPhase;
+    uint8_t _animPhase;
 
-    void drawSlice1TestPattern();
-    void drawDiagnosticsOverlay();
+    // Fast LUT Cache for Diurnal Sky Gradient (256 lines x 2 bytes = 512 bytes)
+    uint16_t _cachedSkyColors[CANOPY_HEIGHT];
+    uint8_t _lastSkyTopR, _lastSkyTopG, _lastSkyTopB;
+    uint8_t _lastSkyBottomR, _lastSkyBottomG, _lastSkyBottomB;
+
+    void updateSkyGradientCache(const AtmospherePalette& pal);
 };
 
 extern MainRenderer Renderer;

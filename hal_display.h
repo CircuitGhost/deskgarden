@@ -27,10 +27,6 @@ inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
 #define COLOR_PEACH       rgb565(255, 180, 140)
 #define COLOR_LAVENDER    rgb565(200, 160, 255)
 
-// Band buffer height (172 * 32 * 2 = 11,008 bytes -> lightweight and rock-solid)
-#define BAND_HEIGHT       32
-#define NUM_BANDS         (SCREEN_HEIGHT / BAND_HEIGHT) // 320 / 32 = 10 bands
-
 class DisplayHAL {
 public:
     DisplayHAL();
@@ -39,26 +35,33 @@ public:
     void setBrightness(uint8_t level);
     uint8_t getBrightness() const { return _brightness; }
 
-    // Band Buffer (172 x 32)
-    uint16_t* getBandBuffer() { return _bandBuffer; }
-    void clearBand(uint16_t color = COLOR_BLACK);
-    void pushBand(uint8_t bandIndex);
+    // Direct Full Framebuffer (172 x 320 x 2 = 110 KB in SRAM)
+    uint16_t* getFramebuffer() { return _framebuffer; }
+    void clear(uint16_t color = COLOR_BLACK);
+    void flush();
 
-    // Primitives on Band Buffer (local y = 0 to BAND_HEIGHT - 1)
-    void drawPixelLocal(int16_t x, int16_t localY, uint16_t color);
-    void fillRectLocal(int16_t x, int16_t localY, int16_t w, int16_t h, uint16_t color);
-    void drawFastHLineLocal(int16_t x, int16_t localY, int16_t w, uint16_t color);
-    void drawFastVLineLocal(int16_t x, int16_t localY, int16_t h, uint16_t color);
+    // Fast Drawing Primitives
+    inline void drawPixel(int16_t x, int16_t y, uint16_t color) {
+        if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT && _framebuffer) {
+            _framebuffer[y * SCREEN_WIDTH + x] = color;
+        }
+    }
+
+    void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
+    void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
+    void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
 
     uint32_t getLastBlitTimeUs() const { return _lastBlitTimeUs; }
     Arduino_GFX* getGFX() { return _gfx; }
+    Arduino_Canvas* getCanvas() { return _canvas; }
 
 private:
     uint8_t _brightness;
     uint32_t _lastBlitTimeUs;
-    uint16_t* _bandBuffer;
+    uint16_t* _framebuffer;
     Arduino_DataBus* _bus;
     Arduino_GFX* _gfx;
+    Arduino_Canvas* _canvas;
 };
 
 extern DisplayHAL Display;

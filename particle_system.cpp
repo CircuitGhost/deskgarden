@@ -163,9 +163,8 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
     }
 }
 
-void ParticleSystem::renderBand(uint16_t* buffer, int16_t bandGlobalY0, int16_t bandHeight, int16_t screenWidth) {
+void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight) {
     if (!buffer) return;
-    int16_t bandGlobalY1 = bandGlobalY0 + bandHeight;
 
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         Particle& p = _pool[i];
@@ -174,53 +173,35 @@ void ParticleSystem::renderBand(uint16_t* buffer, int16_t bandGlobalY0, int16_t 
         int16_t px = p.x >> 4;
         int16_t py = p.y >> 4;
 
-        // Bounding box test against current band
-        if (py + 2 < bandGlobalY0 || py - 2 >= bandGlobalY1) continue;
-
-        // Determine particle color & brightness
-        uint16_t color = COLOR_WHITE;
+        if (px < 0 || px >= screenWidth || py < 0 || py >= screenHeight) continue;
 
         if (p.type == PARTICLE_FIREFLY) {
-            // Sine breathing pulse (amber-gold / neon yellow-green)
-            int8_t pulse = fastSin(p.phase); // -127 to +127
+            int8_t pulse = fastSin(p.phase);
             uint8_t brightness = (pulse > 0) ? (140 + (pulse >> 1)) : (80 + (pulse >> 2));
-            color = rgb565(brightness, (uint8_t)(brightness * 0.95f), (uint8_t)(brightness * 0.2f));
+            uint16_t color = rgb565(brightness, (uint8_t)(brightness * 0.95f), (uint8_t)(brightness * 0.2f));
 
-            int16_t localY = py - bandGlobalY0;
-            if (localY >= 0 && localY < bandHeight && px >= 0 && px < screenWidth) {
-                buffer[localY * screenWidth + px] = color;
-            }
+            buffer[py * screenWidth + px] = color;
 
             if (p.size >= 3) {
-                // Glow halo cross
                 uint16_t dimGlow = rgb565(brightness >> 2, (uint8_t)((brightness * 0.95f) / 4), (uint8_t)((brightness * 0.2f) / 4));
-                if (localY - 1 >= 0 && localY - 1 < bandHeight) buffer[(localY - 1) * screenWidth + px] = dimGlow;
-                if (localY + 1 >= 0 && localY + 1 < bandHeight) buffer[(localY + 1) * screenWidth + px] = dimGlow;
-                if (px - 1 >= 0) buffer[localY * screenWidth + (px - 1)] = dimGlow;
-                if (px + 1 < screenWidth) buffer[localY * screenWidth + (px + 1)] = dimGlow;
+                if (py > 0) buffer[(py - 1) * screenWidth + px] = dimGlow;
+                if (py < screenHeight - 1) buffer[(py + 1) * screenWidth + px] = dimGlow;
+                if (px > 0) buffer[py * screenWidth + (px - 1)] = dimGlow;
+                if (px < screenWidth - 1) buffer[py * screenWidth + (px + 1)] = dimGlow;
             }
         } 
         else if (p.type == PARTICLE_OXYGEN_MOTE) {
-            // Translucent cyan-tinted bubble
-            color = rgb565(210, 245, 255);
-            int16_t localY = py - bandGlobalY0;
-            if (localY >= 0 && localY < bandHeight && px >= 0 && px < screenWidth) {
-                buffer[localY * screenWidth + px] = color;
-            }
-            if (p.size >= 2 && px + 1 < screenWidth && localY + 1 < bandHeight && localY + 1 >= 0) {
-                buffer[(localY + 1) * screenWidth + (px + 1)] = rgb565(140, 210, 240);
+            uint16_t color = rgb565(210, 245, 255);
+            buffer[py * screenWidth + px] = color;
+            if (p.size >= 2 && px + 1 < screenWidth && py + 1 < screenHeight) {
+                buffer[(py + 1) * screenWidth + (px + 1)] = rgb565(140, 210, 240);
             }
         } 
         else if (p.type == PARTICLE_RAIN_CASCADE || p.type == PARTICLE_MIST_DROP) {
-            // Rain streak (pure crystalline azure)
-            color = (p.type == PARTICLE_RAIN_CASCADE) ? rgb565(120, 220, 255) : rgb565(170, 200, 230);
-            int16_t localY = py - bandGlobalY0;
-            if (localY >= 0 && localY < bandHeight && px >= 0 && px < screenWidth) {
-                buffer[localY * screenWidth + px] = color;
-            }
-            // Vertical streak tail
-            if (localY - 1 >= 0 && localY - 1 < bandHeight && px >= 0 && px < screenWidth) {
-                buffer[(localY - 1) * screenWidth + px] = rgb565(60, 140, 200);
+            uint16_t color = (p.type == PARTICLE_RAIN_CASCADE) ? rgb565(120, 220, 255) : rgb565(170, 200, 230);
+            buffer[py * screenWidth + px] = color;
+            if (py > 0) {
+                buffer[(py - 1) * screenWidth + px] = rgb565(60, 140, 200);
             }
         }
     }

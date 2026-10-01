@@ -10,9 +10,10 @@ DisplayHAL Display;
 DisplayHAL::DisplayHAL() 
     : _brightness(DEFAULT_BRIGHTNESS), 
       _lastBlitTimeUs(0),
-      _bandBuffer(nullptr),
+      _framebuffer(nullptr),
       _bus(nullptr),
-      _gfx(nullptr) {}
+      _gfx(nullptr),
+      _canvas(nullptr) {}
 
 bool DisplayHAL::begin() {
     // 1. Isolate SD Card on shared SPI bus
@@ -37,24 +38,31 @@ bool DisplayHAL::begin() {
         34 /* col_offset1 */, 0 /* row_offset1 */, 34 /* col_offset2 */, 0 /* row_offset2 */
     );
 
-    if (!_gfx->begin(LCD_SPI_FREQ)) {
+    if (!_gfx->begin(80000000)) {
         return false;
     }
 
     _gfx->fillScreen(COLOR_BLACK);
 
-    // 5. Allocate 11 KB Band Buffer (172 * 32 * 2 bytes = 11,008 bytes)
-    size_t bandSize = SCREEN_WIDTH * BAND_HEIGHT * sizeof(uint16_t);
-    _bandBuffer = (uint16_t*)heap_caps_malloc(bandSize, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-    if (!_bandBuffer) {
-        _bandBuffer = (uint16_t*)malloc(bandSize);
+    // 5. Allocate 110 KB Full Framebuffer Canvas (172 x 320 x 2 bytes)
+    _canvas = new Arduino_Canvas(
+        SCREEN_WIDTH, SCREEN_HEIGHT, _gfx, 0, 0, 0
+    );
+
+    if (_canvas->begin(GFX_SKIP_OUTPUT_BEGIN)) {
+        _framebuffer = _canvas->getFramebuffer();
+    } else {
+        // Fallback: allocate raw framebuffer in SRAM
+        size_t fbSize = SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint16_t);
+        _framebuffer = (uint16_t*)heap_caps_malloc(fbSize, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+        if (!_framebuffer) {
+            _framebuffer = (uint16_t*)malloc(fbSize);
+        }
     }
 
-    if (_bandBuffer) {
-        clearBand(COLOR_BLACK);
-        for (uint8_t b = 0; b < NUM_BANDS; b++) {
-            pushBand(b);
-        }
+    if (_framebuffer) {
+        clear(COLOR_BLACK);
+        flush();
         return true;
     }
     return false;
@@ -67,66 +75,78 @@ void DisplayHAL::setBrightness(uint8_t level) {
     }
 }
 
-void DisplayHAL::clearBand(uint16_t color) {
-    if (!_bandBuffer) return;
-    uint32_t totalPixels = SCREEN_WIDTH * BAND_HEIGHT;
-    for (uint32_t i = 0; i < totalPixels; i++) {
-        _bandBuffer[i] = color;
+void DisplayHAL::clear(uint16_t color) {
+    if (!_framebuffer) return;
+    uint32_t totalPixels = SCREEN_WIDTH * SCREEN_HEIGHT;
+    uint32_t color32 = ((uint32_t)color << 16) | color;
+    uint32_t* ptr32 = (uint32_t*)_framebuffer;
+    uint32_t count32 = totalPixels >> 1;
+    while (count32--) {
+        *ptr32++ = color32;
     }
 }
 
-void DisplayHAL::drawPixelLocal(int16_t x, int16_t localY, uint16_t color) {
-    if (x < 0 || x >= SCREEN_WIDTH || localY < 0 || localY >= BAND_HEIGHT || !_bandBuffer) return;
-    _bandBuffer[localY * SCREEN_WIDTH + x] = color;
-}
-
-void DisplayHAL::fillRectLocal(int16_t x, int16_t localY, int16_t w, int16_t h, uint16_t color) {
-    if (x >= SCREEN_WIDTH || localY >= BAND_HEIGHT || !_bandBuffer) return;
-    if (x < 0) { w += x; x = 0; }
-    if (localY < 0) { h += localY; localY = 0; }
-    if (x + w > SCREEN_WIDTH) { w = SCREEN_WIDTH - x; }
-    if (localY + h > BAND_HEIGHT) { h = BAND_HEIGHT - localY; }
-    if (w <= 0 || h <= 0) return;
-
-    for (int16_t row = 0; row < h; row++) {
-        uint16_t* ptr = &_bandBuffer[(localY + row) * SCREEN_WIDTH + x];
-        for (int16_t col = 0; col < w; col++) {
-            *ptr++ = color;
-        }
-    }
-}
-
-void DisplayHAL::drawFastHLineLocal(int16_t x, int16_t localY, int16_t w, uint16_t color) {
-    if (localY < 0 || localY >= BAND_HEIGHT || !_bandBuffer) return;
+void DisplayHAL::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
+    if (y < 0 || y >= SCREEN_HEIGHT || !_framebuffer) return;
     if (x < 0) { w += x; x = 0; }
     if (x + w > SCREEN_WIDTH) { w = SCREEN_WIDTH - x; }
     if (w <= 0) return;
 
-    uint16_t* ptr = &_bandBuffer[localY * SCREEN_WIDTH + x];
-    for (int16_t i = 0; i < w; i++) {
+    uint16_t* ptr = &_framebuffer[y * SCREEN_WIDTH + x];
+    uint32_t color32 = ((uint32_t)color << 16) | color;
+
+    if (((uintptr_t)ptr & 2) && w > 0) {
         *ptr++ = color;
+        w--;
+    }
+
+    uint32_t* ptr32 = (uint32_t*)ptr;
+    int16_t count32 = w >> 1;
+    while (count32--) {
+        *ptr32++ = color32;
+    }
+
+    if (w & 1) {
+        ptr = (uint16_t*)ptr32;
+        *ptr = color;
     }
 }
 
-void DisplayHAL::drawFastVLineLocal(int16_t x, int16_t localY, int16_t h, uint16_t color) {
-    if (x < 0 || x >= SCREEN_WIDTH || !_bandBuffer) return;
-    if (localY < 0) { h += localY; localY = 0; }
-    if (localY + h > BAND_HEIGHT) { h = BAND_HEIGHT - localY; }
+void DisplayHAL::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
+    if (x < 0 || x >= SCREEN_WIDTH || !_framebuffer) return;
+    if (y < 0) { h += y; y = 0; }
+    if (y + h > SCREEN_HEIGHT) { h = SCREEN_HEIGHT - y; }
     if (h <= 0) return;
 
-    uint16_t* ptr = &_bandBuffer[localY * SCREEN_WIDTH + x];
+    uint16_t* ptr = &_framebuffer[y * SCREEN_WIDTH + x];
     for (int16_t i = 0; i < h; i++) {
         *ptr = color;
         ptr += SCREEN_WIDTH;
     }
 }
 
-void DisplayHAL::pushBand(uint8_t bandIndex) {
-    if (!_bandBuffer || !_gfx || bandIndex >= NUM_BANDS) return;
+void DisplayHAL::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT || !_framebuffer) return;
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > SCREEN_WIDTH) { w = SCREEN_WIDTH - x; }
+    if (y + h > SCREEN_HEIGHT) { h = SCREEN_HEIGHT - y; }
+    if (w <= 0 || h <= 0) return;
+
+    for (int16_t row = 0; row < h; row++) {
+        drawFastHLine(x, y + row, w, color);
+    }
+}
+
+void DisplayHAL::flush() {
+    if (!_framebuffer || !_gfx) return;
     uint32_t startUs = micros();
 
-    int16_t y = bandIndex * BAND_HEIGHT;
-    _gfx->draw16bitRGBBitmap(0, y, _bandBuffer, SCREEN_WIDTH, BAND_HEIGHT);
+    if (_canvas) {
+        _canvas->flush();
+    } else {
+        _gfx->draw16bitRGBBitmap(0, 0, _framebuffer, SCREEN_WIDTH, SCREEN_HEIGHT);
+    }
 
     _lastBlitTimeUs = micros() - startUs;
 }

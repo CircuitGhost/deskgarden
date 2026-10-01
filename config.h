@@ -39,8 +39,8 @@
 #define PIN_SD_CS            4     // MicroSD Card CS (Shared SPI; MUST be driven HIGH)
 #endif
 
-// SPI Clock Frequency (ST7789 supports up to 40MHz–80MHz)
-#define LCD_SPI_FREQ         40000000
+// SPI Clock Frequency (ST7789 supports up to 80MHz on ESP32-C6)
+#define LCD_SPI_FREQ         80000000
 
 // ==========================================
 // Peripherals Configuration
