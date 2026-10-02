@@ -6,6 +6,7 @@
 #include "time_atmosphere.h"
 #include "particle_system.h"
 #include "plant_engine.h"
+#include "moisture_system.h"
 #include "renderer.h"
 
 // Explicit prototypes to prevent Arduino preprocessor insertion bugs
@@ -47,11 +48,12 @@ void setup() {
     Serial.printf("[SYSTEM] Free heap after display init: %u bytes\n", ESP.getFreeHeap());
     #endif
 
-    // 3. Initialize HUD, Time, Atmosphere, Particles & Botanical Plant Engine
+    // 3. Initialize HUD, Atmosphere, Particles, Plant & Moisture System
     HUD.begin();
     Atmosphere.begin();
     Particles.begin();
     Plant.begin();
+    Moisture.begin();
 
     HUD.setTime(demoHours[demoTimeStep], 42, 0, false);
     HUD.setWeather(demoWeathers[demoTimeStep], 72, 64);
@@ -97,19 +99,20 @@ void loop() {
         HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
 
-        // Trigger watering particle cascade
+        // Hydrate plant & trigger watering particle cascade
+        Moisture.water(22.0f);
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Weather: %d | Stems: %u | Flowers: %u | Particles: %u\n", 
-                      Atmosphere.getPhaseName(), HUD.getHour(), demoWeathers[demoTimeStep], 
+        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Moisture: %.0f%% | Stems: %u | Flowers: %u | Particles: %u\n", 
+                      Atmosphere.getPhaseName(), HUD.getHour(), Moisture.getMoisture(), 
                       Plant.getSegmentCount(), Plant.getFlowerCount(), Particles.getActiveCount());
         #endif
 
         Peripherals.pulseLed({0, 240, 255}, 600);
     }
 
-    // 3. Update HUD Time, Colon Animation, Particles & Botanical Physics (~60 Hz)
+    // 3. Update HUD, Atmosphere, Particles, Plant & Moisture (~60 Hz)
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
         HUD.update(deltaHud);
@@ -117,6 +120,7 @@ void loop() {
         Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
         Plant.updateLifecycle(deltaHud, Atmosphere.getCurrentPhase());
         Plant.updatePhysics(deltaHud);
+        Moisture.update(deltaHud, HUD.getHour(), HUD.getMinute());
         lastHudUpdateTime = currentMillis;
     }
 
@@ -131,13 +135,15 @@ void loop() {
     if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Stems: %u | Flowers: %u | Particles: %u | Free Heap: %u bytes\n",
+            const char* mStateStr = Moisture.isAestivating() ? "DORMANT" : (Moisture.getMoisture() < 40.0f ? "THIRSTY" : "LUSH");
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Moisture: %.0f%% (%s) | Stems: %u | Flowers: %u | Free Heap: %u bytes\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           Display.getLastBlitTimeUs(),
+                          Moisture.getMoisture(),
+                          mStateStr,
                           Plant.getSegmentCount(),
                           Plant.getFlowerCount(),
-                          Particles.getActiveCount(),
                           esp_get_free_heap_size());
         }
     }

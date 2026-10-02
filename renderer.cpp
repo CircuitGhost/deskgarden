@@ -1,6 +1,7 @@
 #include "renderer.h"
 #include "particle_system.h"
 #include "plant_engine.h"
+#include "moisture_system.h"
 
 MainRenderer Renderer;
 
@@ -98,9 +99,43 @@ void MainRenderer::renderFrame() {
         Display.drawFastHLine(0, HUD_HEIGHT + skyY, SCREEN_WIDTH, _cachedSkyColors[skyY]);
     }
 
-    // 3. Render Substrate & Soil (y = HUD_HEIGHT + CANOPY_HEIGHT .. SCREEN_HEIGHT - 1)
-    Display.drawFastHLine(0, HUD_HEIGHT + CANOPY_HEIGHT, SCREEN_WIDTH, rgb565(85, 140, 70)); // Grass line
-    Display.fillRect(0, HUD_HEIGHT + CANOPY_HEIGHT + 1, SCREEN_WIDTH, SUBSTRATE_HEIGHT - 1, rgb565(28, 20, 16)); // Soil
+    // 3. Render Multi-Stratified Substrate & Soil (y = 280 .. 319)
+    int16_t subStartY = HUD_HEIGHT + CANOPY_HEIGHT; // 280
+
+    // Topsoil Surface Line (Lush grass/moss line)
+    Display.drawFastHLine(0, subStartY, SCREEN_WIDTH, rgb565(85, 145, 65));
+    Display.drawFastHLine(0, subStartY + 1, SCREEN_WIDTH, rgb565(55, 95, 45));
+
+    // Rich Organic Humus Loam Strata (y = 282 .. 295)
+    for (int16_t y = 2; y < 16; y++) {
+        uint8_t br = 44 - y;
+        uint8_t bg = 32 - (y * 3 / 4);
+        uint8_t bb = 22 - (y / 2);
+        Display.drawFastHLine(0, subStartY + y, SCREEN_WIDTH, rgb565(br, bg, bb));
+    }
+
+    // Deep Mineral Aggregate Strata (y = 296 .. 319)
+    for (int16_t y = 16; y < SUBSTRATE_HEIGHT; y++) {
+        uint8_t br = 26 - (y / 3);
+        uint8_t bg = 18 - (y / 4);
+        uint8_t bb = 14 - (y / 4);
+        Display.drawFastHLine(0, subStartY + y, SCREEN_WIDTH, rgb565(br, bg, bb));
+    }
+
+    // Mineral flecks & aggregate pebbles
+    static const uint16_t pebbleCoords[8][2] = {
+        {18, 290}, {42, 302}, {68, 294}, {95, 304},
+        {120, 292}, {145, 300}, {30, 312}, {135, 314}
+    };
+    for (int i = 0; i < 8; i++) {
+        Display.drawPixel(pebbleCoords[i][0], pebbleCoords[i][1], rgb565(65, 52, 42));
+    }
+
+    // Subterranean Branching Roots
+    Plant.renderRoots(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+    // Embedded Minimalist Moisture Indicator
+    Moisture.renderGauge(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
     // 4. Render Night Stars / Celestial Twinkle (Integer lookup)
     if (pal.starOpacity > 0.05f) {

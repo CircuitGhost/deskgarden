@@ -9,6 +9,15 @@
 #define MAX_PLANT_SEGMENTS   64
 #define MAX_FLOWER_NODES     12
 #define MAX_LEAF_SPAWN_NODES 32
+#define MAX_ROOT_SEGMENTS    16
+
+struct RootSegment {
+    int16_t x0, y0;
+    int16_t x1, y1;
+    uint8_t thickness;
+    uint16_t color;
+    bool active;
+};
 
 enum PhenotypeFamily : uint8_t {
     PHENOTYPE_ORCHID = 0,       // Highland Orchid (arching stems, broad leaves, large exotic blooms)
@@ -120,6 +129,7 @@ public:
 
     // Vector-to-Raster Framebuffer Rendering
     void render(uint16_t* buffer, int16_t screenWidth = SCREEN_WIDTH, int16_t screenHeight = SCREEN_HEIGHT);
+    void renderRoots(uint16_t* buffer, int16_t screenWidth = SCREEN_WIDTH, int16_t screenHeight = SCREEN_HEIGHT);
 
     // Foliage & Flower telemetry for particle physics
     uint8_t getActiveLeafNodes(LeafNodePos* outArray, uint8_t maxCount) const;
@@ -128,12 +138,16 @@ public:
     const PlantGenome& getGenome() const { return _genome; }
     uint8_t getSegmentCount() const { return _segmentCount; }
     uint8_t getFlowerCount() const { return _flowerCount; }
+    uint8_t getRootCount() const { return _rootCount; }
     const char* getPhenotypeName() const;
 
 private:
     PlantGenome _genome;
     PlantSegment _segments[MAX_PLANT_SEGMENTS];
     uint8_t _segmentCount;
+
+    RootSegment _roots[MAX_ROOT_SEGMENTS];
+    uint8_t _rootCount;
 
     FlowerInstance _flowers[MAX_FLOWER_NODES];
     uint8_t _flowerCount;
@@ -157,6 +171,7 @@ private:
     void growSegmentRecursive(int16_t startX, int16_t startY, uint8_t angle, 
                               uint8_t depth, int8_t parentIdx, float length);
 
+    void generateRoots();
     void configureFlowerStyle();
 
     // Drawing primitives

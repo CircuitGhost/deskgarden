@@ -1,4 +1,5 @@
 #include "plant_engine.h"
+#include "moisture_system.h"
 
 PlantEngine Plant;
 
@@ -160,8 +161,10 @@ void PlantEngine::generatePlant(const PlantGenome& genome) {
     _prngState = genome.seed;
     _segmentCount = 0;
     _flowerCount = 0;
+    _rootCount = 0;
 
     configureFlowerStyle();
+    generateRoots();
 
     int16_t rootX = SCREEN_WIDTH / 2;
     int16_t rootY = SCREEN_HEIGHT - SUBSTRATE_HEIGHT;
@@ -681,4 +684,50 @@ uint8_t PlantEngine::getFlowerNodes(FlowerNodePos* outArray, uint8_t maxCount) c
         }
     }
     return count;
+}
+
+void PlantEngine::generateRoots() {
+    _rootCount = 0;
+    int16_t rx = SCREEN_WIDTH / 2; // 86
+    int16_t ry = SCREEN_HEIGHT - SUBSTRATE_HEIGHT; // 280
+
+    uint16_t rootCol = rgb565(190, 160, 115);
+    uint16_t hairCol = rgb565(155, 125, 85);
+
+    // 1. Central Taproot
+    _roots[_rootCount++] = {rx, ry, (int16_t)(rx - 1), (int16_t)(ry + 10), 2, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx - 1), (int16_t)(ry + 10), (int16_t)(rx + 2), (int16_t)(ry + 22), 2, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx + 2), (int16_t)(ry + 22), (int16_t)(rx - 1), (int16_t)(ry + 32), 1, hairCol, true};
+
+    // 2. Left Lateral Root System
+    _roots[_rootCount++] = {rx, (int16_t)(ry + 4), (int16_t)(rx - 14), (int16_t)(ry + 13), 2, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx - 14), (int16_t)(ry + 13), (int16_t)(rx - 28), (int16_t)(ry + 19), 1, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx - 28), (int16_t)(ry + 19), (int16_t)(rx - 38), (int16_t)(ry + 27), 1, hairCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx - 14), (int16_t)(ry + 13), (int16_t)(rx - 18), (int16_t)(ry + 25), 1, hairCol, true};
+
+    // 3. Right Lateral Root System
+    _roots[_rootCount++] = {rx, (int16_t)(ry + 5), (int16_t)(rx + 15), (int16_t)(ry + 14), 2, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx + 15), (int16_t)(ry + 14), (int16_t)(rx + 30), (int16_t)(ry + 21), 1, rootCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx + 30), (int16_t)(ry + 21), (int16_t)(rx + 42), (int16_t)(ry + 29), 1, hairCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx + 15), (int16_t)(ry + 14), (int16_t)(rx + 20), (int16_t)(ry + 26), 1, hairCol, true};
+
+    // 4. Fine sub-hair tendrils
+    _roots[_rootCount++] = {(int16_t)(rx - 1), (int16_t)(ry + 10), (int16_t)(rx + 8), (int16_t)(ry + 17), 1, hairCol, true};
+    _roots[_rootCount++] = {(int16_t)(rx + 2), (int16_t)(ry + 22), (int16_t)(rx - 8), (int16_t)(ry + 29), 1, hairCol, true};
+}
+
+void PlantEngine::renderRoots(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight) {
+    if (!buffer || _rootCount == 0 || _growthProgress <= 0.05f) return;
+
+    for (uint8_t i = 0; i < _rootCount; i++) {
+        const RootSegment& r = _roots[i];
+        if (!r.active) continue;
+
+        int16_t x0 = r.x0;
+        int16_t y0 = r.y0;
+        int16_t x1 = x0 + (int16_t)((r.x1 - x0) * _growthProgress);
+        int16_t y1 = y0 + (int16_t)((r.y1 - y0) * _growthProgress);
+
+        drawThickLine(buffer, x0, y0, x1, y1, r.thickness, r.color, screenWidth, screenHeight);
+    }
 }
