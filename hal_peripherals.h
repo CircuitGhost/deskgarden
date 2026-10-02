@@ -20,6 +20,7 @@ public:
     // Button Handling
     bool isButtonPressed() const { return _isPressed; }
     bool wasButtonClicked(); // Returns true once per click
+    bool wasButtonHeld();    // Returns true once when button held > 2 seconds
     uint32_t getPressDurationMs() const { return _pressDurationMs; }
 
     // RGB LED Handling
@@ -32,6 +33,8 @@ private:
     bool _lastRawState;
     bool _isPressed;
     bool _clickConsumed;
+    bool _heldTriggered;
+    bool _heldConsumed;
     uint32_t _lastDebounceTime;
     uint32_t _pressStartTime;
     uint32_t _pressDurationMs;

@@ -7,6 +7,7 @@
 #include "particle_system.h"
 #include "plant_engine.h"
 #include "moisture_system.h"
+#include "net_sync.h"
 #include "renderer.h"
 
 // Explicit prototypes to prevent Arduino preprocessor insertion bugs
@@ -60,7 +61,13 @@ void setup() {
     HUD.setGeneration(1);
     Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
 
-    // 4. Initialize Main Renderer
+    // 4. Initialize Network Manager (Wi-Fi 6, FreeRTOS background sync, Captive Portal)
+    NetSync.begin();
+    #if ENABLE_SERIAL_LOG
+    Serial.printf("[NET] NetSync initialized. Status: %s\n", NetSync.getStateString());
+    #endif
+
+    // 5. Initialize Main Renderer
     Renderer.begin();
 
     lastLoopTime = millis();
@@ -77,44 +84,64 @@ void loop() {
     // 1. Poll Hardware Inputs
     Peripherals.update();
 
-    // 2. Handle Boot Button Click Interaction (Cycles Diurnal Phases + triggers Raindrop Cascade)
-    if (Peripherals.wasButtonClicked()) {
-        demoTimeStep = (demoTimeStep + 1) % 5;
-        if (demoTimeStep == 0) {
-            // New generation cycle: mutate botanical genome
-            static uint8_t genCounter = 1;
-            genCounter++;
-            HUD.setGeneration(genCounter);
-            Plant.generateFromSeed(millis() ^ 0x5A5A, genCounter % 4);
-
+    // 2. Handle Boot Button Long-Press (Hold > 2s to toggle Captive Portal Onboarding)
+    if (Peripherals.wasButtonHeld()) {
+        if (!NetSync.isPortalActive()) {
+            NetSync.startCaptivePortal();
+            Peripherals.pulseLed({255, 0, 255}, 1500);
             #if ENABLE_SERIAL_LOG
-            char code[20];
-            Plant.getSeedCode(code);
-            Serial.printf("[GENOME] Generation %u: %s | Seed Code: %s\n", 
-                          genCounter, Plant.getPhenotypeName(), code);
+            Serial.println("[NET] Button Held: Launched Captive Setup Portal (Deskflower-Setup @ 192.168.4.1)");
+            #endif
+        } else {
+            NetSync.stopCaptivePortal();
+            Peripherals.pulseLed({255, 120, 0}, 800);
+            #if ENABLE_SERIAL_LOG
+            Serial.println("[NET] Button Held: Stopped Captive Setup Portal.");
             #endif
         }
+    }
 
-        HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
-        HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
-        Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
+    // 3. Handle Boot Button Click Interaction (Watering & Diurnal Demo cycle when offline)
+    if (Peripherals.wasButtonClicked()) {
+        if (!NetSync.isTimeSynced()) {
+            demoTimeStep = (demoTimeStep + 1) % 5;
+            if (demoTimeStep == 0) {
+                // New generation cycle: mutate botanical genome
+                static uint8_t genCounter = 1;
+                genCounter++;
+                HUD.setGeneration(genCounter);
+                Plant.generateFromSeed(millis() ^ 0x5A5A, genCounter % 4);
+
+                #if ENABLE_SERIAL_LOG
+                char code[20];
+                Plant.getSeedCode(code);
+                Serial.printf("[GENOME] Generation %u: %s | Seed Code: %s\n", 
+                              genCounter, Plant.getPhenotypeName(), code);
+                #endif
+            }
+
+            HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
+            HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
+            Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
+        }
 
         // Hydrate plant & trigger watering particle cascade
         Moisture.water(22.0f);
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:30) | Moisture: %.0f%% | Stems: %u | Flowers: %u | Particles: %u\n", 
-                      Atmosphere.getPhaseName(), HUD.getHour(), Moisture.getMoisture(), 
+        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:%02d) | Moisture: %.0f%% | Stems: %u | Flowers: %u | Particles: %u\n", 
+                      Atmosphere.getPhaseName(), HUD.getHour(), HUD.getMinute(), Moisture.getMoisture(), 
                       Plant.getSegmentCount(), Plant.getFlowerCount(), Particles.getActiveCount());
         #endif
 
         Peripherals.pulseLed({0, 240, 255}, 600);
     }
 
-    // 3. Update HUD, Atmosphere, Particles, Plant & Moisture (~60 Hz)
+    // 4. Update HUD, Atmosphere, Particles, Plant, Moisture & Network (~60 Hz)
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
+        NetSync.update(deltaHud);
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
@@ -124,26 +151,26 @@ void loop() {
         lastHudUpdateTime = currentMillis;
     }
 
-    // 4. 60 FPS Render Loop
+    // 5. 60 FPS Render Loop
     if (currentMillis - lastLoopTime >= FRAME_TIME_MS) {
         lastLoopTime = currentMillis;
         Renderer.renderFrame();
     }
 
-    // 5. Periodic Diagnostics Telemetry (Non-blocking USB CDC)
+    // 6. Periodic Diagnostics Telemetry (Non-blocking USB CDC)
     #if ENABLE_SERIAL_LOG
     if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
             const char* mStateStr = Moisture.isAestivating() ? "DORMANT" : (Moisture.getMoisture() < 40.0f ? "THIRSTY" : "LUSH");
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Moisture: %.0f%% (%s) | Stems: %u | Flowers: %u | Free Heap: %u bytes\n",
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Net: %s | Moisture: %.0f%% (%s) | Stems: %u | Free Heap: %u B\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           Display.getLastBlitTimeUs(),
+                          NetSync.getStateString(),
                           Moisture.getMoisture(),
                           mStateStr,
                           Plant.getSegmentCount(),
-                          Plant.getFlowerCount(),
                           esp_get_free_heap_size());
         }
     }

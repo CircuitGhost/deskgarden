@@ -8,6 +8,8 @@ PeripheralsHAL::PeripheralsHAL()
     : _lastRawState(HIGH),
       _isPressed(false),
       _clickConsumed(true),
+      _heldTriggered(false),
+      _heldConsumed(true),
       _lastDebounceTime(0),
       _pressStartTime(0),
       _pressDurationMs(0),
@@ -40,9 +42,16 @@ void PeripheralsHAL::update() {
             if (_isPressed) {
                 _pressStartTime = now;
                 _clickConsumed = false;
+                _heldTriggered = false;
+                _heldConsumed = false;
             } else {
                 _pressDurationMs = now - _pressStartTime;
             }
+        } else if (_isPressed && !_heldConsumed && (now - _pressStartTime >= 2000)) {
+            // Held for 2000ms
+            _heldTriggered = true;
+            _heldConsumed = true;
+            _clickConsumed = true; // suppress standard click
         }
     }
 
@@ -71,6 +80,14 @@ void PeripheralsHAL::update() {
 bool PeripheralsHAL::wasButtonClicked() {
     if (!_clickConsumed && !_isPressed) {
         _clickConsumed = true;
+        return true;
+    }
+    return false;
+}
+
+bool PeripheralsHAL::wasButtonHeld() {
+    if (_heldTriggered) {
+        _heldTriggered = false;
         return true;
     }
     return false;
