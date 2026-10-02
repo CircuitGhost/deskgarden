@@ -39,6 +39,12 @@ void MoistureSystem::water(float boost) {
     if (_moisturePct > 100.0f) _moisturePct = 100.0f;
 }
 
+void MoistureSystem::setMoisture(float pct) {
+    if (pct < 0.0f) pct = 0.0f;
+    if (pct > 100.0f) pct = 100.0f;
+    _moisturePct = pct;
+}
+
 void MoistureSystem::update(uint32_t deltaMs, uint8_t hour, uint8_t minute) {
     // 1. Slow organic transpiration decay (Gentle drift toward equilibrium)
     // ~1% decay per 120 seconds of simulation

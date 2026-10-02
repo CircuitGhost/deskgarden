@@ -20,8 +20,9 @@ public:
     // Simulation tick
     void update(uint32_t deltaMs, uint8_t hour, uint8_t minute);
 
-    // User watering interaction
+    // User watering interaction & Setters
     void water(float boost = 22.0f);
+    void setMoisture(float pct);
 
     // State queries
     float getMoisture() const { return _moisturePct; }

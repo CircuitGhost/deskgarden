@@ -23,6 +23,8 @@ public:
     uint8_t getMinute() const { return _minute; }
     uint8_t getSecond() const { return _second; }
     WeatherType getWeatherType() const { return _weatherType; }
+    uint8_t getGeneration() const { return _generationIndex; }
+    bool getUse24Hour() const { return _is24Hour; }
 
 private:
     // Time state

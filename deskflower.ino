@@ -8,6 +8,7 @@
 #include "plant_engine.h"
 #include "moisture_system.h"
 #include "net_sync.h"
+#include "state_storage.h"
 #include "renderer.h"
 
 // Explicit prototypes to prevent Arduino preprocessor insertion bugs
@@ -56,18 +57,20 @@ void setup() {
     Plant.begin();
     Moisture.begin();
 
+    // 4. Initialize LittleFS Persistent State Storage (Restores saved specimen, generation, and moisture)
+    Storage.begin();
+
     HUD.setTime(demoHours[demoTimeStep], 42, 0, false);
     HUD.setWeather(demoWeathers[demoTimeStep], 72, 64);
-    HUD.setGeneration(1);
     Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
 
-    // 4. Initialize Network Manager (Wi-Fi 6, FreeRTOS background sync, Captive Portal)
+    // 5. Initialize Network Manager (Wi-Fi 6, FreeRTOS background sync, Captive Portal)
     NetSync.begin();
     #if ENABLE_SERIAL_LOG
     Serial.printf("[NET] NetSync initialized. Status: %s\n", NetSync.getStateString());
     #endif
 
-    // 5. Initialize Main Renderer
+    // 6. Initialize Main Renderer
     Renderer.begin();
 
     lastLoopTime = millis();
@@ -106,11 +109,11 @@ void loop() {
         if (!NetSync.isTimeSynced()) {
             demoTimeStep = (demoTimeStep + 1) % 5;
             if (demoTimeStep == 0) {
-                // New generation cycle: mutate botanical genome
-                static uint8_t genCounter = 1;
-                genCounter++;
+                // New generation cycle: mutate botanical genome & persist
+                uint8_t genCounter = HUD.getGeneration() + 1;
                 HUD.setGeneration(genCounter);
                 Plant.generateFromSeed(millis() ^ 0x5A5A, genCounter % 4);
+                Storage.markDirty();
 
                 #if ENABLE_SERIAL_LOG
                 char code[20];
@@ -125,23 +128,25 @@ void loop() {
             Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         }
 
-        // Hydrate plant & trigger watering particle cascade
+        // Hydrate plant, record lifetime watering & trigger watering particle cascade
         Moisture.water(22.0f);
+        Storage.incrementWaterings();
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:%02d) | Moisture: %.0f%% | Stems: %u | Flowers: %u | Particles: %u\n", 
+        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:%02d) | Moisture: %.0f%% | Lifetime Waters: %u | Particles: %u\n", 
                       Atmosphere.getPhaseName(), HUD.getHour(), HUD.getMinute(), Moisture.getMoisture(), 
-                      Plant.getSegmentCount(), Plant.getFlowerCount(), Particles.getActiveCount());
+                      Storage.getTotalWaterings(), Particles.getActiveCount());
         #endif
 
         Peripherals.pulseLed({0, 240, 255}, 600);
     }
 
-    // 4. Update HUD, Atmosphere, Particles, Plant, Moisture & Network (~60 Hz)
+    // 4. Update HUD, Atmosphere, Particles, Plant, Moisture, Storage & Network (~60 Hz)
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
         NetSync.update(deltaHud);
+        Storage.update(deltaHud);
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
         Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
@@ -163,14 +168,15 @@ void loop() {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
             const char* mStateStr = Moisture.isAestivating() ? "DORMANT" : (Moisture.getMoisture() < 40.0f ? "THIRSTY" : "LUSH");
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Net: %s | Moisture: %.0f%% (%s) | Stems: %u | Free Heap: %u B\n",
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Net: %s | Moisture: %.0f%% (%s) | Waters: %u | Life: %u m | Free: %u B\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           Display.getLastBlitTimeUs(),
                           NetSync.getStateString(),
                           Moisture.getMoisture(),
                           mStateStr,
-                          Plant.getSegmentCount(),
+                          Storage.getTotalWaterings(),
+                          Storage.getLifetimeMinutes(),
                           esp_get_free_heap_size());
         }
     }
