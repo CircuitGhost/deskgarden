@@ -169,6 +169,58 @@ flowchart TD
 
 ---
 
+## Future Roadmap & Extension Slices
+
+### Extension Slice 11: Real-World Weather Precipitation Engine
+* **Goal:** Map live Open-Meteo precipitation data to dynamic atmospheric particle physics.
+* **Deliverables:**
+  1. **Rain / Showers Mode:** Fast-falling diagonal rain streaks with soft mist condensation accumulation.
+  2. **Snow / Ice Mode:** Gentle, low-velocity crystalline snowflake motes drifting with wind sway currents.
+  3. **High Humidity / Fog:** Glass condensation droplet accumulation sliding down the viewport.
+
+### Extension Slice 12: Bioluminescent Nocturnal Phosphorescence
+* **Goal:** Create an ethereal ambient nightlight experience between 23:00 and 05:00.
+* **Deliverables:**
+  1. **Vein Phosphorescence:** Leaf central veins and petal margins pulse with a subtle 0.1Hz sine-modulated bioluminescent mint/cyan tint.
+  2. **Nocturnal Spores:** Softly glowing spore motes emitting gentle light bursts during midnight hours.
+
+### Extension Slice 13: Autonomous Pollen Dispersion & Cross-Pollination
+* **Goal:** Add dynamic biological simulation mechanics rewarding mature specimen growth.
+* **Deliverables:**
+  1. **Floating Pollen Motes:** Mature daylight flowers release micro golden pollen motes that drift with wind sway.
+  2. **Cross-Pollination Events:** When motes intersect neighboring branches or flower nodes, trigger a subtle golden sparkle animation and deposit a seed pod in the soil strata.
+
+### Extension Slice 14: Four-Season Morphologies & Calendar Awareness
+* **Goal:** Adapt visual aesthetics, leaf palettes, and particle physics to real-world seasons via SNTP calendar dates.
+* **Deliverables:**
+  1. **Autumn (Sep – Nov):** Warm russet, ochre, and crimson leaf transitions; falling leaf particles drifting in wind gusts.
+  2. **Winter (Dec – Feb):** Frosted stem outlines, crystalline ice borders, and festive winter snowdrop/poinsettia blooms.
+  3. **Spring (Mar – May):** Sakura/cherry blossom petal showers with radiant lime-green new growth shoots.
+  4. **Summer (Jun – Aug):** Rich tropical emerald canopy with vivid solar orchid flowers and active photosynthetic bubbles.
+
+### Extension Slice 15: Micro-Fauna Visitors & Living Ecosystem Wildlife
+* **Goal:** Introduce occasional charming pixel wildlife to make the terrarium feel genuinely alive.
+* **Deliverables:**
+  1. **Ladybug / Micro-Beetle:** 4×4 animated sprite climbing main stems and perching on broad leaves.
+  2. **Hummingbird / Pygmy Moth:** Tiny 6×6 creature hovering near open flower nectar stamens for 5–8 seconds before darting away.
+  3. **Loam Snail:** Slowly traverses the bottom substrate strata over several minutes.
+
+### Extension Slice 16: ESP-NOW Peer-to-Peer Desk Mesh & Cross-Pollination
+* **Goal:** Enable multi-device interaction and cross-terrarium breeding using zero-configuration 2.4GHz ESP-NOW mesh.
+* **Deliverables:**
+  1. **Peer Discovery:** Auto-detects neighboring Deskflower units on the same desk or local space without Wi-Fi routers.
+  2. **Visual Spore Handoff:** Pollen motes floating off the edge of one display visually arrive on the adjacent device.
+  3. **Hybrid Breeding Engine:** Combines parent phenotypes and colors to generate unique hybrid Seed Codes.
+
+### Extension Slice 17: Local Intranet Web Dashboard (`http://deskflower.local`)
+* **Goal:** Provide a rich, zero-friction browser dashboard served locally over mDNS/HTTP.
+* **Deliverables:**
+  1. **Live Web Telemetry:** Displays real-time hydration, lifetime growth graphs, generation index, and active weather.
+  2. **Seed Code Library:** One-click copy, export, and import of rare botanical specimens.
+  3. **Terrarium Customization:** Custom plant renaming, palette tweaking, and quiet-hour schedule settings.
+
+---
+
 ## Appendix: Verified Hardware Architecture & Lessons Learned (Waveshare ESP32-C6-LCD-1.47)
 
 ### 1. Pin Configuration
