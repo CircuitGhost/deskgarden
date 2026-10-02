@@ -87,7 +87,7 @@ void loop() {
     // 1. Poll Hardware Inputs
     Peripherals.update();
 
-    // 2. Handle Boot Button Long-Press (Hold > 2s to toggle Captive Portal Onboarding)
+    // 2. Handle Boot Button Long-Press (Hold > 2s to toggle Captive Setup Portal)
     if (Peripherals.wasButtonHeld()) {
         if (!NetSync.isPortalActive()) {
             NetSync.startCaptivePortal();
@@ -104,45 +104,39 @@ void loop() {
         }
     }
 
-    // 3. Handle Boot Button Click Interaction (Watering & Diurnal Demo cycle when offline)
+    // 3. Handle Boot Button Double-Click (Genome Mutation & Seed Code Generation)
+    if (Peripherals.wasButtonDoubleClicked()) {
+        uint8_t genCounter = HUD.getGeneration() + 1;
+        HUD.setGeneration(genCounter);
+        Plant.generateFromSeed(millis() ^ 0xA5A5, genCounter % 4);
+        Storage.markDirty();
+
+        char code[20];
+        Plant.getSeedCode(code);
+        #if ENABLE_SERIAL_LOG
+        Serial.printf("[GENOME] Double-Click: Mutated to Generation %u (%s) | Seed Code: %s\n", 
+                      genCounter, Plant.getPhenotypeName(), code);
+        #endif
+
+        Peripherals.pulseLed({255, 180, 0}, 800); // Warm amber/gold pulse
+    }
+
+    // 4. Handle Boot Button Single-Click (Watering Interaction)
     if (Peripherals.wasButtonClicked()) {
-        if (!NetSync.isTimeSynced()) {
-            demoTimeStep = (demoTimeStep + 1) % 5;
-            if (demoTimeStep == 0) {
-                // New generation cycle: mutate botanical genome & persist
-                uint8_t genCounter = HUD.getGeneration() + 1;
-                HUD.setGeneration(genCounter);
-                Plant.generateFromSeed(millis() ^ 0x5A5A, genCounter % 4);
-                Storage.markDirty();
-
-                #if ENABLE_SERIAL_LOG
-                char code[20];
-                Plant.getSeedCode(code);
-                Serial.printf("[GENOME] Generation %u: %s | Seed Code: %s\n", 
-                              genCounter, Plant.getPhenotypeName(), code);
-                #endif
-            }
-
-            HUD.setTime(demoHours[demoTimeStep], 30, 0, false);
-            HUD.setWeather(demoWeathers[demoTimeStep], 68 + (demoTimeStep * 2), 48 + (demoTimeStep * 9));
-            Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
-        }
-
         // Hydrate plant, record lifetime watering & trigger watering particle cascade
         Moisture.water(22.0f);
         Storage.incrementWaterings();
         Particles.triggerWateringCascade(24);
 
         #if ENABLE_SERIAL_LOG
-        Serial.printf("[EVENT] Boot Click -> Phase: %s (%02d:%02d) | Moisture: %.0f%% | Lifetime Waters: %u | Particles: %u\n", 
-                      Atmosphere.getPhaseName(), HUD.getHour(), HUD.getMinute(), Moisture.getMoisture(), 
-                      Storage.getTotalWaterings(), Particles.getActiveCount());
+        Serial.printf("[EVENT] Single-Click: Watered -> Moisture: %.0f%% | Lifetime Waters: %u | Active Particles: %u\n", 
+                      Moisture.getMoisture(), Storage.getTotalWaterings(), Particles.getActiveCount());
         #endif
 
-        Peripherals.pulseLed({0, 240, 255}, 600);
+        Peripherals.pulseLed({0, 240, 255}, 600); // Hydrating cyan breathing pulse
     }
 
-    // 4. Update HUD, Atmosphere, Particles, Plant, Moisture, Storage & Network (~60 Hz)
+    // 5. Update HUD, Atmosphere, Particles, Plant, Moisture, Storage & Network (~60 Hz)
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
         NetSync.update(deltaHud);
@@ -153,28 +147,50 @@ void loop() {
         Plant.updateLifecycle(deltaHud, Atmosphere.getCurrentPhase());
         Plant.updatePhysics(deltaHud);
         Moisture.update(deltaHud, HUD.getHour(), HUD.getMinute());
+
+        // Night Mode Dynamic Backlight Brightness Throttling (Comfortable dark-room ambient lighting)
+        static uint8_t lastBrightMin = 255;
+        if (HUD.getMinute() != lastBrightMin) {
+            lastBrightMin = HUD.getMinute();
+            uint16_t timeMin = HUD.getHour() * 60 + lastBrightMin;
+            uint8_t targetBrightness = 220;
+            if (timeMin >= 1350 || timeMin < 360) { // 22:30 to 06:00
+                targetBrightness = 45; // Soft night mode
+            } else if (timeMin >= 360 && timeMin < 480) { // 06:00 to 08:00 (Dawn ramp)
+                float p = (float)(timeMin - 360) / 120.0f;
+                targetBrightness = (uint8_t)(45 + p * (220 - 45));
+            } else if (timeMin >= 1260 && timeMin < 1350) { // 21:00 to 22:30 (Dusk ramp)
+                float p = (float)(timeMin - 1260) / 90.0f;
+                targetBrightness = (uint8_t)(220 - p * (220 - 45));
+            }
+            Display.setBrightness(targetBrightness);
+        }
+
         lastHudUpdateTime = currentMillis;
     }
 
-    // 5. 60 FPS Render Loop
+    // 6. 60 FPS Render Loop
     if (currentMillis - lastLoopTime >= FRAME_TIME_MS) {
         lastLoopTime = currentMillis;
         Renderer.renderFrame();
     }
 
-    // 6. Periodic Diagnostics Telemetry (Non-blocking USB CDC)
+    // 7. Periodic Diagnostics Telemetry (Non-blocking USB CDC)
     #if ENABLE_SERIAL_LOG
     if (Serial && (currentMillis - lastLogTime >= 4000)) {
         lastLogTime = currentMillis;
         if (Serial.availableForWrite() >= 64) {
             const char* mStateStr = Moisture.isAestivating() ? "DORMANT" : (Moisture.getMoisture() < 40.0f ? "THIRSTY" : "LUSH");
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Blit: %u us | Net: %s | Moisture: %.0f%% (%s) | Waters: %u | Life: %u m | Free: %u B\n",
+            char seedCode[20];
+            Plant.getSeedCode(seedCode);
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Net: %s | Moisture: %.0f%% (%s) | Gen %u | Code: %s | Waters: %u | Uptime: %u m | Free Heap: %u B\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
-                          Display.getLastBlitTimeUs(),
                           NetSync.getStateString(),
                           Moisture.getMoisture(),
                           mStateStr,
+                          HUD.getGeneration(),
+                          seedCode,
                           Storage.getTotalWaterings(),
                           Storage.getLifetimeMinutes(),
                           esp_get_free_heap_size());

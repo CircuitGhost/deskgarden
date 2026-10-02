@@ -7,11 +7,14 @@ PeripheralsHAL Peripherals;
 PeripheralsHAL::PeripheralsHAL()
     : _lastRawState(HIGH),
       _isPressed(false),
-      _clickConsumed(true),
+      _clickPending(false),
+      _singleClickTriggered(false),
+      _doubleClickTriggered(false),
       _heldTriggered(false),
       _heldConsumed(true),
       _lastDebounceTime(0),
       _pressStartTime(0),
+      _releaseTime(0),
       _pressDurationMs(0),
       _currentLedColor{0, 0, 0},
       _targetLedColor{0, 0, 0},
@@ -40,19 +43,37 @@ void PeripheralsHAL::update() {
         if (rawState != _isPressed) {
             _isPressed = rawState;
             if (_isPressed) {
+                // Button Pressed Down
                 _pressStartTime = now;
-                _clickConsumed = false;
                 _heldTriggered = false;
                 _heldConsumed = false;
             } else {
+                // Button Released
                 _pressDurationMs = now - _pressStartTime;
+                if (!_heldConsumed && _pressDurationMs < 1500) {
+                    if (_clickPending && (now - _releaseTime < 280)) {
+                        // Double Click Detected!
+                        _doubleClickTriggered = true;
+                        _clickPending = false;
+                    } else {
+                        // First click detected, wait window for potential second click
+                        _clickPending = true;
+                        _releaseTime = now;
+                    }
+                }
             }
         } else if (_isPressed && !_heldConsumed && (now - _pressStartTime >= 2000)) {
             // Held for 2000ms
             _heldTriggered = true;
             _heldConsumed = true;
-            _clickConsumed = true; // suppress standard click
+            _clickPending = false; // suppress clicks
         }
+    }
+
+    // Check single click timeout
+    if (_clickPending && (now - _releaseTime >= 280)) {
+        _singleClickTriggered = true;
+        _clickPending = false;
     }
 
     // 2. LED Animation / Pulse Update
@@ -78,8 +99,16 @@ void PeripheralsHAL::update() {
 }
 
 bool PeripheralsHAL::wasButtonClicked() {
-    if (!_clickConsumed && !_isPressed) {
-        _clickConsumed = true;
+    if (_singleClickTriggered) {
+        _singleClickTriggered = false;
+        return true;
+    }
+    return false;
+}
+
+bool PeripheralsHAL::wasButtonDoubleClicked() {
+    if (_doubleClickTriggered) {
+        _doubleClickTriggered = false;
         return true;
     }
     return false;

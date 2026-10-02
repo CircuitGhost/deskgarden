@@ -9,6 +9,8 @@
 #include "hud_manager.h"
 #include "time_atmosphere.h"
 #include "hal_peripherals.h"
+#include "plant_engine.h"
+#include "state_storage.h"
 
 NetSyncManager NetSync;
 
@@ -79,6 +81,10 @@ static const char PORTAL_HTML[] PROGMEM = R"rawliteral(
           <option value="8">UTC +08:00 (CST / Singapore, Tokyo -1)</option>
           <option value="9">UTC +09:00 (JST / Tokyo, Seoul)</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label>Plant Seed Code (Optional Import)</label>
+        <input type="text" name="seed" placeholder="e.g. A3F8-K9M2-P4T6-W7Y1" maxlength="20">
       </div>
       <button type="submit" class="btn">Save &amp; Connect</button>
     </form>
@@ -215,8 +221,15 @@ void NetSyncManager::startCaptivePortal() {
         float lon = server.arg("lon").toFloat();
         int tzHour = server.arg("tz").toInt();
         int32_t gmtSec = tzHour * 3600;
+        String seedCode = server.arg("seed");
 
         saveConfig(ssid.c_str(), pass.c_str(), lat, lon, gmtSec, 0);
+
+        if (seedCode.length() >= 16) {
+            Plant.loadSeedCode(seedCode.c_str());
+            Storage.markDirty();
+        }
+
         server.send_P(200, "text/html", SAVED_HTML);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
