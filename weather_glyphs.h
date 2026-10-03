@@ -8,7 +8,9 @@ enum WeatherType {
     WEATHER_PARTLY_CLOUDY,
     WEATHER_CLOUDY,
     WEATHER_RAIN,
-    WEATHER_MOON
+    WEATHER_MOON,
+    WEATHER_SNOW,
+    WEATHER_FOG
 };
 
 // Render 8x8 pixel micro-glyph with multi-tone colors

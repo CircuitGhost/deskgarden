@@ -29,6 +29,7 @@ struct WeatherReport {
     int16_t temperatureF;
     uint8_t humidity;
     bool isDay;
+    uint8_t precipIntensity; // 0 none, 1 light, 2 moderate, 3 heavy
     uint32_t lastSyncMillis;
 };
 
@@ -75,7 +76,7 @@ private:
     void connectWiFi();
     bool fetchWeather();
     void parseWeatherJson(const char* json);
-    WeatherType mapWmoToWeatherType(int wmoCode, bool isDay);
+    WeatherType mapWmoToWeatherType(int wmoCode, bool isDay, float snowfallCm, float precipMm);
 };
 
 extern NetSyncManager NetSync;

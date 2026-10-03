@@ -14,7 +14,7 @@ public:
 
     // Setters
     void setTime(uint8_t hour, uint8_t min, uint8_t sec, bool is24h = false);
-    void setWeather(WeatherType type, int16_t tempF, uint8_t humidityPct);
+    void setWeather(WeatherType type, int16_t tempF, uint8_t humidityPct, uint8_t precipIntensity = 0);
     void setGeneration(uint8_t genIndex);
     void setUse24Hour(bool is24h) { _is24Hour = is24h; }
 
@@ -23,6 +23,8 @@ public:
     uint8_t getMinute() const { return _minute; }
     uint8_t getSecond() const { return _second; }
     WeatherType getWeatherType() const { return _weatherType; }
+    uint8_t getHumidity() const { return _humidityPct; }
+    uint8_t getPrecipIntensity() const { return _precipIntensity; }
     uint8_t getGeneration() const { return _generationIndex; }
     bool getUse24Hour() const { return _is24Hour; }
 
@@ -39,6 +41,7 @@ private:
     WeatherType _weatherType;
     int16_t _temperatureF;
     uint8_t _humidityPct;
+    uint8_t _precipIntensity;
     uint8_t _generationIndex;
 
     // Colon pulse animation

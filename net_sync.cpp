@@ -330,24 +330,91 @@ void NetSyncManager::taskLoop() {
     }
 }
 
-WeatherType NetSyncManager::mapWmoToWeatherType(int wmoCode, bool isDay) {
-    if (wmoCode == 0) {
-        return isDay ? WEATHER_SUN : WEATHER_MOON;
-    } else if (wmoCode <= 2) {
-        return WEATHER_PARTLY_CLOUDY;
-    } else if (wmoCode <= 48) {
-        return WEATHER_CLOUDY;
-    } else {
-        // 51+ (Drizzle, rain, showers, thunderstorms, snow)
+static bool isSnowOrIceCode(int wmoCode) {
+    switch (wmoCode) {
+        case 56: case 57:             // Freezing drizzle
+        case 66: case 67:             // Freezing rain
+        case 71: case 73: case 75:     // Snow fall
+        case 77:                      // Snow grains
+        case 85: case 86:             // Snow showers
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool isLiquidPrecipCode(int wmoCode) {
+    switch (wmoCode) {
+        case 51: case 53: case 55:     // Drizzle
+        case 61: case 63: case 65:     // Rain
+        case 80: case 81: case 82:     // Rain showers
+        case 95: case 96: case 99:     // Thunderstorm, with or without hail
+            return true;
+        default:
+            return false;
+    }
+}
+
+static uint8_t intensityFromWmo(int wmoCode) {
+    switch (wmoCode) {
+        case 51: case 56: case 61: case 66: case 71: case 77: case 80: case 85:
+            return 1;
+        case 53: case 63: case 73: case 81:
+            return 2;
+        case 55: case 57: case 65: case 67: case 75: case 82: case 86:
+        case 95: case 96: case 99:
+            return 3;
+        default:
+            return 0;
+    }
+}
+
+static uint8_t intensityFromAmount(float precipMm, float snowfallCm) {
+    if (snowfallCm >= 1.0f || precipMm >= 2.5f) return 3;
+    if (snowfallCm >= 0.3f || precipMm >= 0.5f) return 2;
+    if (snowfallCm > 0.0f || precipMm > 0.0f) return 1;
+    return 0;
+}
+
+static uint8_t classifyPrecipIntensity(int wmoCode, float precipMm, float snowfallCm) {
+    uint8_t fromCode = intensityFromWmo(wmoCode);
+    uint8_t fromAmount = intensityFromAmount(precipMm, snowfallCm);
+    return (fromCode > fromAmount) ? fromCode : fromAmount;
+}
+
+WeatherType NetSyncManager::mapWmoToWeatherType(int wmoCode, bool isDay, float snowfallCm, float precipMm) {
+    if (snowfallCm < 0.0f) snowfallCm = 0.0f;
+    if (precipMm < 0.0f) precipMm = 0.0f;
+
+    // Snowfall amount or a freezing/snow WMO code. Never drawn as rain.
+    if (isSnowOrIceCode(wmoCode) || snowfallCm > 0.0f) {
+        return WEATHER_SNOW;
+    }
+
+    // Fog and depositing rime, unless measurable liquid precip is also falling.
+    if ((wmoCode == 45 || wmoCode == 48) && precipMm < 0.5f) {
+        return WEATHER_FOG;
+    }
+
+    if (isLiquidPrecipCode(wmoCode) || precipMm > 0.0f) {
         return WEATHER_RAIN;
     }
+
+    if (wmoCode == 0) {
+        return isDay ? WEATHER_SUN : WEATHER_MOON;
+    }
+    if (wmoCode <= 2) {
+        return WEATHER_PARTLY_CLOUDY;
+    }
+    return WEATHER_CLOUDY;
 }
 
 void NetSyncManager::parseWeatherJson(const char* json) {
     if (!json) return;
 
     // Fast zero-allocation JSON extraction for Open-Meteo payload:
-    // "current":{"time":"...","temperature_2m":68.4,"relative_humidity_2m":55,"is_day":1,"weather_code":1}
+    // "current":{"time":"...","temperature_2m":68.4,"relative_humidity_2m":55,
+    //            "precipitation":0.2,"snowfall":0.0,"is_day":1,"weather_code":1}
     const char* cur = strstr(json, "\"current\":");
     if (!cur) return;
 
@@ -374,11 +441,34 @@ void NetSyncManager::parseWeatherJson(const char* json) {
         _weather.isDay = (dayVal != 0);
     }
 
-    // 4. Extract weather_code
+    // 4. Precipitation amount (mm over the preceding hour) and snowfall (cm).
+    float precipMm = 0.0f;
+    float snowfallCm = 0.0f;
+    const char* precipKey = strstr(cur, "\"precipitation\":");
+    if (precipKey) {
+        precipMm = atof(precipKey + 16);
+        if (precipMm < 0.0f) precipMm = 0.0f;
+    }
+    const char* snowKey = strstr(cur, "\"snowfall\":");
+    if (snowKey) {
+        snowfallCm = atof(snowKey + 11);
+        if (snowfallCm < 0.0f) snowfallCm = 0.0f;
+    }
+
+    // 5. Extract weather_code and map rain / snow / fog from the live reading.
     const char* codeKey = strstr(cur, "\"weather_code\":");
-    if (codeKey) {
-        int wmoCode = atoi(codeKey + 15);
-        _weather.weatherType = mapWmoToWeatherType(wmoCode, _weather.isDay);
+    if (codeKey || precipKey || snowKey) {
+        int wmoCode = codeKey ? atoi(codeKey + 15) : 0;
+        WeatherType mapped = mapWmoToWeatherType(wmoCode, _weather.isDay, snowfallCm, precipMm);
+        uint8_t intensity = classifyPrecipIntensity(wmoCode, precipMm, snowfallCm);
+        if ((mapped == WEATHER_RAIN || mapped == WEATHER_SNOW) && intensity == 0) {
+            intensity = 1;
+        }
+        if (mapped != WEATHER_RAIN && mapped != WEATHER_SNOW) {
+            intensity = 0;
+        }
+        _weather.weatherType = mapped;
+        _weather.precipIntensity = intensity;
     }
 
     _weather.valid = true;
@@ -392,7 +482,7 @@ bool NetSyncManager::fetchWeather() {
     HTTPClient http;
     char url[256];
     snprintf(url, sizeof(url),
-             "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m,weather_code,is_day&temperature_unit=fahrenheit",
+             "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,relative_humidity_2m,precipitation,snowfall,weather_code,is_day&temperature_unit=fahrenheit",
              _config.latitude, _config.longitude);
 
     http.begin(client, url);
@@ -422,6 +512,6 @@ void NetSyncManager::update(uint32_t deltaMs) {
 
     // Update HUD with live weather if synced
     if (_weather.valid) {
-        HUD.setWeather(_weather.weatherType, _weather.temperatureF, _weather.humidity);
+        HUD.setWeather(_weather.weatherType, _weather.temperatureF, _weather.humidity, _weather.precipIntensity);
     }
 }

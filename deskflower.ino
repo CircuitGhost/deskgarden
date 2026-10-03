@@ -143,7 +143,8 @@ void loop() {
         Storage.update(deltaHud);
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
-        Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType());
+        Particles.update(deltaHud, Atmosphere.getCurrentPhase(), HUD.getWeatherType(),
+                         HUD.getHumidity(), HUD.getPrecipIntensity());
         Plant.updateLifecycle(deltaHud, Atmosphere.getCurrentPhase());
         Plant.updatePhysics(deltaHud);
         Moisture.update(deltaHud, HUD.getHour(), HUD.getMinute());
