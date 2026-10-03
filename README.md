@@ -1,119 +1,113 @@
 # Deskflower 🌸
 
-**Ambient Living Generative Botanical Companion & Smart Desk Clock for ESP32-C6**
+A digital botanical terrarium and ambient desk clock running on the **Waveshare ESP32-C6-LCD-1.47** (172×320 IPS display).
 
-[![Platform: ESP32-C6](https://img.shields.io/badge/Platform-ESP32--C6%20(RISC--V)-blue.svg)](https://www.espressif.com/)
-[![Display: ST7789 172x320 IPS](https://img.shields.io/badge/Display-172%C3%97320%20IPS%20ST7789-green.svg)](https://www.waveshare.com/)
-[![Framework: Arduino-ESP32](https://img.shields.io/badge/Framework-Arduino--ESP32%20Core%203.x-orange.svg)](https://github.com/espressif/arduino-esp32)
-[![Wi-Fi: 802.11ax Wi-Fi 6](https://img.shields.io/badge/Wi--Fi-802.11ax%20Wi--Fi%206-purple.svg)]()
-
-Deskflower is an ambient, living digital terrarium and smart desk companion engineered for modern workstations. Running on the ESP32-C6 microcontroller with an integrated 1.47" $172 \times 320$ color IPS display, Deskflower merges procedural generative botanical simulation (L-systems) with real-world atmospheric synchronicity, anti-annoyance asymmetric moisture physics, and real-time clock timekeeping.
+Deskflower simulates living procedural flora using L-systems that sway, bloom, cross-pollinate, and react to your local weather and time of day. It is designed to sit on your desk with zero maintenance—plants regulate their own baseline moisture and never wither away.
 
 ---
 
-## ✨ Key Features
+## ⚡ Quick Install (Browser Flasher)
 
-1. **Procedural Botanical Generation & L-Systems:**
-   - Deterministic fractal branching structures with organic thickness tapering, branch curvature, and natural phototropism.
-   - Distinct phenotypes: **Highland Orchid**, **Dwarf Fern**, **Micro-Succulent**, and **Flowering Bonsai**.
-   - Coherent multi-frequency harmonic wind-sway physics with integer LUT acceleration (60 FPS rendering).
-2. **Blooming Lifecycle & Genetics:**
-   - 6-stage flower unfolding lifecycle (Bud $\rightarrow$ Swollen Calyx $\rightarrow$ Opening $\rightarrow$ Full Bloom $\rightarrow$ Nectar Stage $\rightarrow$ Seed Pod).
-   - Diurnal petal posture (blooms open during daylight and golden hour, resting at night).
-   - **16-Character Seed Code Engine (Crockford Base32):** Deterministically encode and share botanical specimens across devices.
-3. **5-Phase Diurnal Atmospheric Engine:**
-   - **Dawn (05:30 – 08:00):** Pastel peach to lavender vertical sky gradient.
-   - **Daylight (08:00 – 17:30):** Crisp radiant sky blue with rising photosynthetic oxygen bubbles.
-   - **Golden Hour (17:30 – 19:30):** Warm honey amber wash with elongated shadows.
-   - **Dusk (19:30 – 21:30):** Deep violet to twilight indigo.
-   - **Night (21:30 – 05:30):** Obsidian navy backdrop with twinkling starfield and drifting bioluminescent fireflies.
-4. **Substrate Strata & Asymmetric Moisture Engine:**
-   - Multi-layered soil strata texture with subterranean branching roots.
-   - Anti-annoyance moisture model: 40%–60% dynamic equilibrium baseline with 04:00 AM autonomic dew recovery.
-   - **Safe Aestivation (Dormancy):** Plant never perishes into an ugly brown state; entering aesthetic dormancy under extended drought and reviving instantly with one watering tap.
-5. **Wi-Fi 6, SNTP & Open-Meteo Weather Sync:**
-   - **Zero-Friction Captive Portal:** SoftAP `Deskflower-Setup` at `192.168.4.1` with mobile-responsive onboarding.
-   - **SNTP Wall Clock:** Precise local real-time clock display with pulsing colon.
-   - **Live Weather Sync:** HTTPS weather polling updating HUD micro-glyphs (☀️ Clear, ⛅ Partly Cloudy, ☁️ Overcast, 🌧️ Rain, 🌙 Clear Night).
-6. **LittleFS State Persistence & Wear Leveling:**
-   - Binary state container with CRC32 checksum and atomic temporary file swapping (`/state.tmp` $\rightarrow$ `/state.bin`).
-   - Restores generation index, seed code, growth maturity, and hydration instantly upon boot.
-7. **Night Mode Backlight Throttling:**
-   - Dynamic PWM brightness fading to a gentle ambient glow between 22:30 and 06:00 for comfortable dark-room aesthetics.
+If you use **Google Chrome** or **Microsoft Edge**, you can flash Deskflower directly from your browser without installing Arduino IDE or any command-line tools:
+
+👉 **[Open the Web Flasher](https://circuitghost.github.io/deskgarden/dist/)** *(or open `dist/index.html` locally)*
+
+1. Plug your ESP32-C6 into your computer with a USB-C cable.
+2. Click **Install Deskflower** and select the serial port from the popup.
+3. Once the progress bar reaches 100%, the screen will immediately boot into Deskflower.
 
 ---
 
-## 🎮 Hardware Controls & Interaction
+## 🎮 Controls
 
-| Action | Control | Result / Visual Feedback |
+| Action | Gesture | What it does |
 | :--- | :--- | :--- |
-| **Water Plant** | **Single Click** Boot Button | Hydrates soil ($+22\%$), triggers raindrop particle cascade, pulses **Cyan LED** |
-| **Mutate / Seed Code** | **Double Click** Boot Button | Mutates genome to next generation, prints Crockford Seed Code to Serial, pulses **Amber LED** |
-| **Wi-Fi Setup Portal** | **Hold Button (> 2s)** | Starts/stops `Deskflower-Setup` SoftAP captive portal at `192.168.4.1`, pulses **Magenta LED** |
+| **Water Soil** | **Single click** | Adds +22% moisture, triggers raindrop particle physics, pulses cyan LED |
+| **Mutate Specimen** | **Double click** | Advances to next generation, exports 16-char Seed Code to serial, pulses amber LED |
+| **Wi-Fi Setup Portal** | **Hold (> 2 sec)** | Starts captive AP (`Deskflower-Setup` at `192.168.4.1`), pulses magenta LED |
 
 ---
 
-## 📐 Pinout & Hardware Architecture (Waveshare ESP32-C6-LCD-1.47)
+## ✨ Features
 
-| Signal | GPIO | Function / Notes |
+* **Procedural Plant Generator:** Fractal branching with natural upward phototropism, tapered stems, and four phenotypes: Highland Orchid, Dwarf Fern, Micro-Succulent, and Flowering Bonsai.
+* **Diurnal Atmosphere:** Sky gradients and lighting transition smoothly across 5 phases: Dawn (peach/lavender), Daylight (azure), Golden Hour (amber), Dusk (violet), and Night (starfield + bioluminescent fireflies).
+* **Live Weather & Clock Sync:** Syncs with Open-Meteo and SNTP over Wi-Fi 6 to mirror real-time conditions (Sun, Clouds, Rain, Mist, Moon) and local temperature/humidity on the top HUD.
+* **Local Web Dashboard:** Visit `http://deskflower.local` on your phone or laptop while connected to your home Wi-Fi to check hydration telemetry, rename your terrarium, and copy/import Seed Codes.
+* **ESP-NOW Peer Mesh:** If multiple Deskflower units are nearby, they discover each other automatically and share drifting pollen spores across screens to breed hybrid varieties.
+* **Four-Season Shifts & Wildlife:** Calendar-aware seasonal palettes (autumn foliage, winter frost, spring cherry blossoms) and occasional visits from pixel ladybugs, pygmy moths, and loam snails.
+* **Safe Aestivation & Persistence:** If left unwatered, plants gracefully enter a safe dormancy mode rather than displaying an ugly brown state. Full genome, age, and water stats persist across power loss via LittleFS.
+* **Night Mode Backlight:** Automatically dims display PWM between 22:30 and 06:00 for comfortable dark-room aesthetics.
+
+---
+
+## 📐 Hardware & Pinout
+
+**Target Board:** Waveshare ESP32-C6-LCD-1.47 (ST7789 172×320 IPS, WS2812 RGB LED, Boot button)
+
+| Signal | GPIO | Notes |
 | :--- | :---: | :--- |
-| **LCD_MOSI / SDA** | `GPIO 6` | SPI MOSI Data Out (80 MHz) |
-| **LCD_SCLK / SCL** | `GPIO 7` | SPI Hardware Clock |
-| **LCD_CS** | `GPIO 14` | ST7789 Chip Select (Active LOW) |
-| **LCD_DC** | `GPIO 15` | Data / Command Select |
-| **LCD_RST** | `GPIO 21` | Hardware Reset |
-| **LCD_BL** | `GPIO 22` | Backlight PWM (5 kHz LEDC) |
-| **SD_CS** | `GPIO 4` | **Shared SPI Bus Isolation:** Held `OUTPUT HIGH` on boot |
-| **BOOT_BUTTON** | `GPIO 9` | Multi-function input button (Active LOW) |
-| **RGB_LED** | `GPIO 8` | Onboard WS2812 Addressable RGB LED |
+| **LCD MOSI** | `GPIO 6` | SPI Data (80 MHz) |
+| **LCD SCLK** | `GPIO 7` | SPI Clock |
+| **LCD CS** | `GPIO 14` | ST7789 Chip Select |
+| **LCD DC** | `GPIO 15` | Data / Command |
+| **LCD RST** | `GPIO 21` | Hardware Reset |
+| **LCD Backlight** | `GPIO 22` | Backlight PWM (5 kHz LEDC) |
+| **SD CS** | `GPIO 4` | Shared SPI isolation (held HIGH) |
+| **Boot Button** | `GPIO 9` | Multi-gesture input (Active LOW) |
+| **RGB LED** | `GPIO 8` | Onboard WS2812 LED |
 
 ---
 
-## 🛠️ Building & Flashing
+## 🛠️ Building with Arduino CLI
 
-### Requirements
-- [arduino-cli](https://arduino.github.io/arduino-cli/) or Arduino IDE 2.x
-- `esp32:esp32` core version $\ge 3.0.0$
-- `GFX_Library_for_Arduino` library
+If you prefer building from source:
 
-### Build & Upload Commands (Arduino CLI)
+### Prerequisites
+* [arduino-cli](https://arduino.github.io/arduino-cli/)
+* ESP32 Arduino Core 3.x (`esp32:esp32`)
+* `GFX_Library_for_Arduino`
+
+### Compile & Flash
 
 ```bash
-# 1. Compile firmware with CDC-on-Boot and Huge App partition scheme
+# 1. Compile with CDC-on-Boot and Huge App partition table
 arduino-cli compile --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc,PartitionScheme=huge_app .
 
-# 2. Upload to connected ESP32-C6 board
+# 2. Upload to your connected board
 arduino-cli upload -p /dev/cu.usbmodem101 --fqbn esp32:esp32:esp32c6:CDCOnBoot=cdc,PartitionScheme=huge_app .
 
-# 3. Monitor live serial diagnostics (115200 baud)
+# 3. View serial telemetry (115200 baud)
 arduino-cli monitor -p /dev/cu.usbmodem101 -c baudrate=115200
 ```
 
 ---
 
-## 📦 Project Architecture
+## 📁 Codebase Layout
 
 ```
 deskflower/
-├── deskflower.ino          # Main setup, loop orchestration, and button event dispatch
-├── config.h                # Hardware pinouts, layout geometry, timing, and FPS targets
-├── hal_display.h / .cpp    # ST7789 SPI driver (Arduino_GFX), full canvas FB, backlight PWM
-├── hal_peripherals.h / .cpp# Single/double/hold button debouncing and WS2812 LED breathing engine
-├── hud_manager.h / .cpp    # Top 24px HUD status bar (clock, micro-glyphs, generation index)
-├── micro_font.h / .cpp     # 5x7 micro-typography font engine with colon pulse
-├── weather_glyphs.h / .cpp # Micro-weather glyph renderer (Sun, Clouds, Rain, Moon)
-├── time_atmosphere.h / .cpp# 5-phase diurnal sky palettes, sine transitions, and starfield
-├── particle_system.h / .cpp# 48-slot particle pool (oxygen bubbles, fireflies, rain cascade)
-├── plant_engine.h / .cpp   # L-System fractal generator, phenotypes, seed codes, sway physics
-├── moisture_system.h / .cpp# Asymmetric moisture decay, autonomic dew, dormancy & gauge
-├── net_sync.h / .cpp       # Wi-Fi 6, SoftAP Captive Portal, SNTP time, and Open-Meteo sync
-├── state_storage.h / .cpp  # LittleFS flash persistence, CRC32 validation, and wear leveling
-├── renderer.h / .cpp       # Main composite rendering pipeline (Substrate, Plant, Atmosphere, HUD)
-├── MRD.md                  # Market Requirements Document
-└── IMPLEMENTATION_PLAN.md  # 10-Slice Implementation Plan & Architecture Specification
+├── deskflower.ino       # Main loop, timing orchestration, button dispatch
+├── config.h             # Pin definitions, geometry, and rendering constants
+├── hal_display.*        # ST7789 SPI driver, full canvas framebuffer, backlight PWM
+├── hal_peripherals.*    # Single/double/hold button debouncing, WS2812 LED breathing
+├── hud_manager.*        # Top 24px HUD (clock, micro-weather glyphs, generation index)
+├── micro_font.*         # 5x7 micro-typography font engine with pulsing colon
+├── weather_glyphs.*     # 8x8 micro-weather icon bitmaps
+├── time_atmosphere.*    # 5-phase diurnal sky palettes and celestial twinkle
+├── particle_system.*    # Particle physics pool (oxygen bubbles, rain, mist, fauna)
+├── plant_engine.*       # L-System generator, phenotypes, seed codes, wind sway
+├── moisture_system.*    # Asymmetric decay, autonomic dew recovery, soil gauge
+├── net_sync.*           # Wi-Fi 6, SoftAP captive portal, SNTP time, Open-Meteo
+├── mesh_sync.*          # ESP-NOW peer discovery and cross-screen pollen sharing
+├── web_dashboard.*      # Embedded HTTP server for http://deskflower.local
+├── state_storage.*      # LittleFS flash state persistence with CRC32 wear leveling
+├── renderer.*           # Framebuffer composition pipeline (Substrate + Plant + Sky + HUD)
+└── dist/                # Pre-compiled binaries and 1-click ESP Web Tools flasher
 ```
 
 ---
 
 ## 📄 License
+
 MIT License. Open-source release ready.
