@@ -12,6 +12,7 @@
 #include "plant_engine.h"
 #include "state_storage.h"
 #include "mesh_sync.h"
+#include "web_dashboard.h"
 
 NetSyncManager NetSync;
 
@@ -131,7 +132,8 @@ NetSyncManager::NetSyncManager()
       _syncRequested(false),
       _lastSyncTime(0),
       _lastConnectAttempt(0),
-      _connectRetries(0) {
+      _connectRetries(0),
+      _routesReady(false) {
     memset(&_config, 0, sizeof(_config));
     memset(&_weather, 0, sizeof(_weather));
     _config.latitude = 37.7749f;
@@ -143,12 +145,14 @@ NetSyncManager::NetSyncManager()
 
 void NetSyncManager::begin() {
     loadConfig();
+    Dashboard.begin(server);
+    registerHttpRoutes();
 
-    // Start background FreeRTOS task (stack 8KB)
+    // Dashboard handlers build JSON on this task. 12KB leaves room beside TLS.
     xTaskCreate(
         backgroundNetTask,
         "NetSyncTask",
-        8192,
+        12288,
         this,
         1,
         &netTaskHandle
@@ -201,21 +205,35 @@ void NetSyncManager::saveConfig(const char* ssid, const char* pass, float lat, f
     prefs.end();
 }
 
-void NetSyncManager::startCaptivePortal() {
-    _state = NET_STATE_PORTAL_ACTIVE;
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("Deskflower-Setup");
+static void sendCaptiveProbe() {
+    if (NetSync.isPortalActive()) {
+        server.send_P(200, "text/html", PORTAL_HTML);
+    } else {
+        server.send(204, "text/plain", "");
+    }
+}
 
-    IPAddress apIP = WiFi.softAPIP();
-    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-    dnsServer.start(DNS_PORT, "*", apIP);
+void NetSyncManager::registerHttpRoutes() {
+    if (_routesReady) return;
+    _routesReady = true;
 
     server.on("/", HTTP_GET, []() {
-        server.send_P(200, "text/html", PORTAL_HTML);
+        if (NetSync.isPortalActive()) {
+            server.send_P(200, "text/html", PORTAL_HTML);
+            return;
+        }
+        if (!NetSync.isConnected()) {
+            server.send(503, "text/plain", "Deskflower is offline");
+            return;
+        }
+        Dashboard.sendHome(server);
     });
 
     server.on("/save", HTTP_POST, [this]() {
+        if (!NetSync.isPortalActive()) {
+            server.send(404, "text/plain", "Not found");
+            return;
+        }
         String ssid = server.arg("ssid");
         String pass = server.arg("password");
         float lat = server.arg("lat").toFloat();
@@ -240,15 +258,35 @@ void NetSyncManager::startCaptivePortal() {
         connectWiFi();
     });
 
-    // Captive redirect hooks for mobile devices
-    server.on("/generate_204", HTTP_GET, []() { server.send_P(200, "text/html", PORTAL_HTML); });
-    server.on("/hotspot-detect.html", HTTP_GET, []() { server.send_P(200, "text/html", PORTAL_HTML); });
-    server.on("/connectivitycheck.gstatic.com", HTTP_GET, []() { server.send_P(200, "text/html", PORTAL_HTML); });
+    // Captive redirect hooks for mobile devices. On the LAN these stay empty
+    // so a phone does not treat the terrarium as a sign-in gate.
+    server.on("/generate_204", HTTP_GET, sendCaptiveProbe);
+    server.on("/hotspot-detect.html", HTTP_GET, sendCaptiveProbe);
+    server.on("/connectivitycheck.gstatic.com", HTTP_GET, sendCaptiveProbe);
     server.onNotFound([]() {
-        server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString(), true);
-        server.send(302, "text/plain", "");
+        if (NetSync.isPortalActive()) {
+            server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString(), true);
+            server.send(302, "text/plain", "");
+            return;
+        }
+        server.send(404, "text/plain", "Not found");
     });
 
+    Dashboard.registerRoutes(server);
+}
+
+void NetSyncManager::startCaptivePortal() {
+    Dashboard.stopStation();
+    _state = NET_STATE_PORTAL_ACTIVE;
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("Deskflower-Setup");
+
+    IPAddress apIP = WiFi.softAPIP();
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.start(DNS_PORT, "*", apIP);
+
+    registerHttpRoutes();
     server.begin();
 }
 
@@ -268,6 +306,7 @@ void NetSyncManager::connectWiFi() {
         _state = NET_STATE_OFFLINE;
         return;
     }
+    WiFi.setHostname("deskflower");
     WiFi.mode(WIFI_STA);
     WiFi.begin(_config.ssid, _config.password);
 }
@@ -311,6 +350,7 @@ void NetSyncManager::taskLoop() {
             _connectRetries++;
             if (_connectRetries > 3) {
                 // Fall back to offline simulation
+                Dashboard.stopStation();
                 _state = NET_STATE_OFFLINE;
             } else {
                 _lastConnectAttempt = now;
@@ -322,10 +362,14 @@ void NetSyncManager::taskLoop() {
 
     if (_state == NET_STATE_CONNECTED || _state == NET_STATE_SYNCING) {
         if (WiFi.status() != WL_CONNECTED) {
+            Dashboard.stopStation();
             _state = NET_STATE_CONNECTING;
             _lastConnectAttempt = now;
             return;
         }
+
+        Dashboard.ensureStation();
+        server.handleClient();
 
         // Periodic or triggered sync
         if (_syncRequested || (now - _lastSyncTime >= SYNC_INTERVAL_MS) || _lastSyncTime == 0) {
@@ -525,4 +569,6 @@ void NetSyncManager::update(uint32_t deltaMs) {
     if (_weather.valid) {
         HUD.setWeather(_weather.weatherType, _weather.temperatureF, _weather.humidity, _weather.precipIntensity);
     }
+
+    Dashboard.sample(millis());
 }

@@ -520,6 +520,12 @@ void PlantEngine::getSeedCode(char* outCode20) const {
     encodeSeedCode(_genome, outCode20);
 }
 
+void PlantEngine::setPetalPalette(uint8_t palette) {
+    if (palette > 4) return;
+    _genome.petalPalette = palette;
+    configureFlowerStyle();
+}
+
 bool PlantEngine::composeHybridSeedCode(const ForeignParent& foreign, char* outCode20, PlantGenome* outGenome) const {
     if (!outCode20) return false;
 

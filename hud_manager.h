@@ -28,6 +28,7 @@ public:
     uint8_t getDay() const { return _day; }
     bool hasCalendar() const { return _month >= 1 && _month <= 12; }
     WeatherType getWeatherType() const { return _weatherType; }
+    int16_t getTemperatureF() const { return _temperatureF; }
     uint8_t getHumidity() const { return _humidityPct; }
     uint8_t getPrecipIntensity() const { return _precipIntensity; }
     uint8_t getGeneration() const { return _generationIndex; }

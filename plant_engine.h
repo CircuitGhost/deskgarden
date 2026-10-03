@@ -147,6 +147,7 @@ public:
     // Fold this plant together with a foreign spore. The living specimen stays put.
     bool composeHybridSeedCode(const ForeignParent& foreign, char* outCode20, PlantGenome* outGenome = nullptr) const;
     uint16_t getPetalColor() const { return _flowerStyle.petalColor; }
+    void setPetalPalette(uint8_t palette);
 
     // Lifecycle, Growth & Diurnal Blooming Animation
     void setGrowthProgress(float progress);

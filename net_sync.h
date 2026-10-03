@@ -72,8 +72,10 @@ private:
     uint32_t _lastSyncTime;
     uint32_t _lastConnectAttempt;
     uint8_t _connectRetries;
+    bool _routesReady;
 
     void connectWiFi();
+    void registerHttpRoutes();
     bool fetchWeather();
     void parseWeatherJson(const char* json);
     WeatherType mapWmoToWeatherType(int wmoCode, bool isDay, float snowfallCm, float precipMm);

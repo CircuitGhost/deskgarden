@@ -9,6 +9,7 @@
 #include "moisture_system.h"
 #include "net_sync.h"
 #include "mesh_sync.h"
+#include "web_dashboard.h"
 #include "state_storage.h"
 #include "renderer.h"
 
@@ -155,21 +156,11 @@ void loop() {
         Plant.updatePhysics(deltaHud);
         Moisture.update(deltaHud, HUD.getHour(), HUD.getMinute());
 
-        // Night Mode Dynamic Backlight Brightness Throttling (Comfortable dark-room ambient lighting)
-        static uint8_t lastBrightMin = 255;
-        if (HUD.getMinute() != lastBrightMin) {
-            lastBrightMin = HUD.getMinute();
-            uint16_t timeMin = HUD.getHour() * 60 + lastBrightMin;
-            uint8_t targetBrightness = 220;
-            if (timeMin >= 1350 || timeMin < 360) { // 22:30 to 06:00
-                targetBrightness = 45; // Soft night mode
-            } else if (timeMin >= 360 && timeMin < 480) { // 06:00 to 08:00 (Dawn ramp)
-                float p = (float)(timeMin - 360) / 120.0f;
-                targetBrightness = (uint8_t)(45 + p * (220 - 45));
-            } else if (timeMin >= 1260 && timeMin < 1350) { // 21:00 to 22:30 (Dusk ramp)
-                float p = (float)(timeMin - 1260) / 90.0f;
-                targetBrightness = (uint8_t)(220 - p * (220 - 45));
-            }
+        // Quiet-hour backlight. Vein phosphorescence stays on its own 23:00–05:00 clock.
+        static uint8_t lastBrightness = 255;
+        uint8_t targetBrightness = Dashboard.backlightFor(HUD.getHour(), HUD.getMinute());
+        if (targetBrightness != lastBrightness) {
+            lastBrightness = targetBrightness;
             Display.setBrightness(targetBrightness);
         }
 
