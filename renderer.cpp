@@ -134,6 +134,9 @@ void MainRenderer::renderFrame() {
     // Subterranean Branching Roots
     Plant.renderRoots(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 
+    // Seed pods left in the humus by cross-pollination
+    Plant.renderSoilSeedPods(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
+
     // Embedded Minimalist Moisture Indicator
     Moisture.renderGauge(fb, SCREEN_WIDTH, SCREEN_HEIGHT);
 

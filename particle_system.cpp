@@ -100,6 +100,34 @@ static void activateNocturnalSpore(Particle& p) {
     p.active = true;
 }
 
+static const uint32_t POLLINATION_COOLDOWN_MS = 400;
+static const uint8_t POLLEN_GRACE_FRAMES = 10;
+
+static void activateGoldenSparkle(Particle& p, int16_t xSub, int16_t ySub) {
+    p.x = xSub;
+    p.y = ySub;
+    p.vx = 0;
+    p.vy = 0;
+    p.life = 18;
+    p.maxLife = 18;
+    p.type = PARTICLE_GOLDEN_SPARKLE;
+    p.size = 3;
+    p.phase = 0;
+    p.tag = 0;
+    p.active = true;
+}
+
+static void releaseSeedMote(Particle& p, bool carrySparkle) {
+    p.type = PARTICLE_SEED_MOTE;
+    p.size = carrySparkle ? 2 : 1;
+    p.tag = 0;
+    p.vx = (int16_t)((rand() % 5) - 2);
+    p.vy = (int16_t)(18 + (rand() % 6));
+    p.life = 255;
+    p.maxLife = 255;
+    p.active = true;
+}
+
 static void activateSnowflake(Particle& p) {
     p.x = (int16_t)((rand() % (SCREEN_WIDTH - 8) + 4) << 4);
     p.y = (int16_t)((HUD_HEIGHT + 2) << 4);
@@ -116,18 +144,22 @@ static void activateSnowflake(Particle& p) {
 ParticleSystem::ParticleSystem()
     : _lastSpawnTime(0),
       _lastSporeSpawn(0),
+      _lastPollination(0),
       _globalPhase(0) {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
+        _pool[i].tag = 0;
     }
 }
 
 void ParticleSystem::begin() {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
+        _pool[i].tag = 0;
     }
     _lastSpawnTime = millis();
     _lastSporeSpawn = millis();
+    _lastPollination = millis();
     _globalPhase = 0;
 }
 
@@ -161,24 +193,30 @@ static void spawnFairWeather(Particle& p, TimePhase phase) {
         p.active = true;
     } 
     else if (phase == PHASE_GOLDEN_HOUR || (phase == PHASE_DAYLIGHT && rand() % 100 < 45)) {
-        // Pollen grain release from mature flowers
+        // Pollen grain release from mature flowers. Any open bloom can be the source.
         FlowerNodePos flowers[MAX_FLOWER_NODES];
         uint8_t fCount = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
-        if (fCount > 0) {
-            uint8_t fIdx = rand() % fCount;
-            if (flowers[fIdx].isMature) {
-                p.x = flowers[fIdx].x << 4;
-                p.y = (flowers[fIdx].y - 2) << 4;
-                p.vx = (rand() % 15 - 5); // drift with breeze
-                p.vy = (rand() % 9 - 4);  // gentle floating flutter
-                p.life = rand() % 50 + 50;
-                p.maxLife = p.life;
-                p.type = PARTICLE_POLLEN_MOTE;
-                p.size = 1;
-                p.phase = rand() % 32;
-                p.active = true;
-                return;
+        uint8_t matureIds[MAX_FLOWER_NODES];
+        uint8_t matureCount = 0;
+        for (uint8_t fi = 0; fi < fCount; fi++) {
+            if (flowers[fi].isMature && matureCount < MAX_FLOWER_NODES) {
+                matureIds[matureCount++] = fi;
             }
+        }
+        if (matureCount > 0) {
+            uint8_t fIdx = matureIds[rand() % matureCount];
+            p.x = flowers[fIdx].x << 4;
+            p.y = (flowers[fIdx].y - 2) << 4;
+            p.vx = (rand() % 15 - 5); // drift with breeze
+            p.vy = (rand() % 9 - 4);  // gentle floating flutter
+            p.life = (uint8_t)(rand() % 60 + 90);
+            p.maxLife = p.life;
+            p.type = PARTICLE_POLLEN_MOTE;
+            p.size = 1;
+            p.phase = (uint8_t)(rand() % 32);
+            p.tag = fIdx;
+            p.active = true;
+            return;
         }
 
         // Fallback: Daytime photosynthetic oxygen bubble rising from foliage
@@ -351,10 +389,15 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             p.x += (p.vx + waveX);
             p.y += p.vy;
         } else if (p.type == PARTICLE_POLLEN_MOTE) {
-            // Floating drifting pollen grain
-            int16_t driftY = fastSin(p.phase + (i * 3)) >> 5;
-            p.x += (p.vx + (fastSin(p.phase) >> 4));
+            // Float on the sine flutter, leaned by the same breeze that sways the stems.
+            int16_t driftY = fastSin((uint8_t)(p.phase + (uint8_t)(i * 3))) >> 5;
+            int16_t breeze = (int16_t)(Plant.getWindSway() >> 6);
+            p.x += (p.vx + (fastSin(p.phase) >> 4) + breeze);
             p.y += (p.vy + driftY);
+        } else if (p.type == PARTICLE_GOLDEN_SPARKLE) {
+            int16_t shimmer = fastSin(p.phase) >> 6;
+            p.x += shimmer;
+            p.y += fastSin((uint8_t)(p.phase + 8)) >> 6;
         } else if (p.type == PARTICLE_SEED_MOTE || p.type == PARTICLE_RAIN_STREAK || p.type == PARTICLE_RAIN_CASCADE) {
             p.x += p.vx;
             p.y += p.vy;
@@ -384,14 +427,47 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             p.y += p.vy;
         }
 
+        if (p.type == PARTICLE_POLLEN_MOTE) {
+            tryCrossPollinate(p, now);
+        }
+
         // Screen boundary checks (Canopy space: HUD_HEIGHT to SCREEN_HEIGHT - 2)
         int16_t px = p.x >> 4;
         int16_t py = p.y >> 4;
+
+        if (p.type == PARTICLE_SEED_MOTE &&
+            px >= 0 && px < SCREEN_WIDTH &&
+            py >= (SCREEN_HEIGHT - SUBSTRATE_HEIGHT)) {
+            Plant.depositSoilSeedPod(px);
+            p.active = false;
+            continue;
+        }
 
         if (px < 0 || px >= SCREEN_WIDTH || py < HUD_HEIGHT || py >= (SCREEN_HEIGHT - 2)) {
             p.active = false;
         }
     }
+}
+
+void ParticleSystem::tryCrossPollinate(Particle& mote, uint32_t now) {
+    if (mote.type != PARTICLE_POLLEN_MOTE) return;
+
+    uint8_t lived = (uint8_t)(mote.maxLife - mote.life);
+    if (lived < POLLEN_GRACE_FRAMES) return;
+    if ((uint32_t)(now - _lastPollination) < POLLINATION_COOLDOWN_MS) return;
+
+    int16_t hx = (int16_t)(mote.x >> 4);
+    int16_t hy = (int16_t)(mote.y >> 4);
+    if (!Plant.touchesNeighborCanopy(hx, hy, mote.tag)) return;
+
+    int8_t spark = findFreeSlot();
+    bool carrySparkle = true;
+    if (spark >= 0) {
+        activateGoldenSparkle(_pool[spark], mote.x, mote.y);
+        carrySparkle = false;
+    }
+    releaseSeedMote(mote, carrySparkle);
+    _lastPollination = now;
 }
 
 void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight) {
@@ -439,6 +515,30 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
         else if (p.type == PARTICLE_SEED_MOTE) {
             uint16_t color = rgb565(175, 125, 45);
             buffer[py * screenWidth + px] = color;
+            uint8_t lived = (uint8_t)(p.maxLife - p.life);
+            if (p.size >= 2 && lived < 12) {
+                uint16_t spark = rgb565(255, 220, 80);
+                if (py > 0) buffer[(py - 1) * screenWidth + px] = spark;
+                if (py + 1 < screenHeight) buffer[(py + 1) * screenWidth + px] = spark;
+                if (px > 0) buffer[py * screenWidth + (px - 1)] = spark;
+                if (px + 1 < screenWidth) buffer[py * screenWidth + (px + 1)] = spark;
+            }
+        }
+        else if (p.type == PARTICLE_GOLDEN_SPARKLE) {
+            uint16_t core = rgb565(255, 236, 120);
+            uint16_t arm = rgb565(196, 150, 40);
+            buffer[py * screenWidth + px] = core;
+            if (py > 0) buffer[(py - 1) * screenWidth + px] = arm;
+            if (py + 1 < screenHeight) buffer[(py + 1) * screenWidth + px] = arm;
+            if (px > 0) buffer[py * screenWidth + (px - 1)] = arm;
+            if (px + 1 < screenWidth) buffer[py * screenWidth + (px + 1)] = arm;
+            if ((p.phase & 4) != 0) {
+                uint16_t twinkle = rgb565(255, 210, 70);
+                if (py > 0 && px > 0) buffer[(py - 1) * screenWidth + (px - 1)] = twinkle;
+                if (py > 0 && px + 1 < screenWidth) buffer[(py - 1) * screenWidth + (px + 1)] = twinkle;
+                if (py + 1 < screenHeight && px > 0) buffer[(py + 1) * screenWidth + (px - 1)] = twinkle;
+                if (py + 1 < screenHeight && px + 1 < screenWidth) buffer[(py + 1) * screenWidth + (px + 1)] = twinkle;
+            }
         }
         else if (p.type == PARTICLE_RAIN_CASCADE) {
             uint16_t color = rgb565(120, 220, 255);

@@ -79,7 +79,9 @@ PlantEngine::PlantEngine()
       _curWindOffset(0),
       _phosphoElapsedMs(0),
       _phosphoBlend(0),
-      _prngState(123456789) {}
+      _prngState(123456789) {
+    clearSoilSeedPods();
+}
 
 void PlantEngine::begin() {
     _growthProgress = 1.0f;
@@ -189,6 +191,7 @@ void PlantEngine::generatePlant(const PlantGenome& genome) {
     _segmentCount = 0;
     _flowerCount = 0;
     _rootCount = 0;
+    clearSoilSeedPods();
 
     configureFlowerStyle();
     generateRoots();
@@ -456,12 +459,153 @@ void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hou
         _phosphoElapsedMs = 0;
         _phosphoBlend = 0;
     }
+
+    for (uint8_t i = 0; i < MAX_SOIL_SEED_PODS; i++) {
+        if (!_soilPods[i].active) continue;
+        if (_soilPods[i].age < 255) _soilPods[i].age++;
+        _soilPods[i].phase++;
+    }
 }
 
 void PlantEngine::fertilizeFlower(uint8_t flowerIdx) {
     if (flowerIdx < _flowerCount) {
         _flowers[flowerIdx].pollinated = true;
         _flowers[flowerIdx].stage = BLOOM_SEED_POD;
+    }
+}
+
+void PlantEngine::clearSoilSeedPods() {
+    for (uint8_t i = 0; i < MAX_SOIL_SEED_PODS; i++) {
+        _soilPods[i].x = 0;
+        _soilPods[i].depth = 0;
+        _soilPods[i].phase = 0;
+        _soilPods[i].age = 0;
+        _soilPods[i].active = false;
+    }
+}
+
+static bool withinRadius(int16_t x, int16_t y, int16_t cx, int16_t cy, int16_t radius) {
+    int32_t dx = (int32_t)x - cx;
+    int32_t dy = (int32_t)y - cy;
+    int32_t r = radius;
+    return (dx * dx) + (dy * dy) <= (r * r);
+}
+
+static bool nearSegment(int16_t px, int16_t py,
+                        int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                        int16_t radius) {
+    int16_t minX = (x0 < x1) ? x0 : x1;
+    int16_t maxX = (x0 > x1) ? x0 : x1;
+    int16_t minY = (y0 < y1) ? y0 : y1;
+    int16_t maxY = (y0 > y1) ? y0 : y1;
+    if (px < (int16_t)(minX - radius) || px > (int16_t)(maxX + radius) ||
+        py < (int16_t)(minY - radius) || py > (int16_t)(maxY + radius)) {
+        return false;
+    }
+
+    int32_t dx = (int32_t)x1 - x0;
+    int32_t dy = (int32_t)y1 - y0;
+    int32_t len2 = (dx * dx) + (dy * dy);
+    if (len2 <= 1) {
+        return withinRadius(px, py, x0, y0, radius);
+    }
+
+    int32_t t = (((int32_t)px - x0) * dx) + (((int32_t)py - y0) * dy);
+    if (t <= 0) {
+        return withinRadius(px, py, x0, y0, radius);
+    }
+    if (t >= len2) {
+        return withinRadius(px, py, x1, y1, radius);
+    }
+
+    int32_t cx = x0 + ((dx * t) / len2);
+    int32_t cy = y0 + ((dy * t) / len2);
+    int32_t ddx = (int32_t)px - cx;
+    int32_t ddy = (int32_t)py - cy;
+    int32_t r = radius;
+    return (ddx * ddx) + (ddy * ddy) <= (r * r);
+}
+
+static void putSoilPixel(uint16_t* buffer, int16_t width, int16_t height,
+                         int16_t x, int16_t y, uint16_t color) {
+    if (!buffer || x < 0 || y < 0 || x >= width || y >= height) return;
+    buffer[(y * width) + x] = color;
+}
+
+bool PlantEngine::touchesNeighborCanopy(int16_t x, int16_t y, uint8_t originFlower) const {
+    const int16_t flowerRadius = 7;
+    const int16_t branchRadius = 4;
+
+    uint8_t ignoreSeg = 0xFF;
+    if (originFlower < _flowerCount) {
+        ignoreSeg = _flowers[originFlower].terminalSegIdx;
+    }
+
+    for (uint8_t i = 0; i < _flowerCount; i++) {
+        if (i == originFlower) continue;
+        const FlowerInstance& flower = _flowers[i];
+        if (flower.stage == BLOOM_VEGETATIVE) continue;
+        if (withinRadius(x, y, flower.x, flower.y, flowerRadius)) return true;
+    }
+
+    for (uint8_t i = 0; i < _segmentCount; i++) {
+        const PlantSegment& seg = _segments[i];
+        if (!seg.active || i == ignoreSeg) continue;
+        if (nearSegment(x, y, seg.curX0, seg.curY0, seg.curX1, seg.curY1, branchRadius)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PlantEngine::depositSoilSeedPod(int16_t x) {
+    if (x < 4) x = 4;
+    if (x > (int16_t)(SCREEN_WIDTH - 5)) x = (int16_t)(SCREEN_WIDTH - 5);
+
+    uint8_t slot = 0;
+    uint8_t oldestAge = 0;
+    for (uint8_t i = 0; i < MAX_SOIL_SEED_PODS; i++) {
+        if (!_soilPods[i].active) {
+            slot = i;
+            break;
+        }
+        if (i == 0 || _soilPods[i].age >= oldestAge) {
+            oldestAge = _soilPods[i].age;
+            slot = i;
+        }
+    }
+
+    SoilSeedPod& pod = _soilPods[slot];
+    pod.x = x;
+    pod.depth = (uint8_t)(5 + ((uint8_t)x & 3));
+    pod.phase = 0;
+    pod.age = 0;
+    pod.active = true;
+    return true;
+}
+
+void PlantEngine::renderSoilSeedPods(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight) const {
+    if (!buffer) return;
+
+    int16_t surface = (int16_t)(SCREEN_HEIGHT - SUBSTRATE_HEIGHT);
+    for (uint8_t i = 0; i < MAX_SOIL_SEED_PODS; i++) {
+        const SoilSeedPod& pod = _soilPods[i];
+        if (!pod.active) continue;
+
+        int16_t x = pod.x;
+        int16_t y = (int16_t)(surface + pod.depth);
+        uint8_t pulse = (uint8_t)(lutSin(pod.phase) + 127);
+        uint8_t bodyR = (uint8_t)(150 + (pulse >> 3));
+        uint16_t body = rgb565(bodyR, (uint8_t)((bodyR * 3) / 4), 36);
+        uint16_t cap = rgb565(230, 196, 64);
+        uint16_t shade = rgb565(96, 64, 28);
+
+        putSoilPixel(buffer, screenWidth, screenHeight, x, y, cap);
+        putSoilPixel(buffer, screenWidth, screenHeight, (int16_t)(x - 1), (int16_t)(y + 1), body);
+        putSoilPixel(buffer, screenWidth, screenHeight, x, (int16_t)(y + 1), body);
+        putSoilPixel(buffer, screenWidth, screenHeight, (int16_t)(x + 1), (int16_t)(y + 1), body);
+        putSoilPixel(buffer, screenWidth, screenHeight, x, (int16_t)(y + 2), body);
+        putSoilPixel(buffer, screenWidth, screenHeight, x, (int16_t)(y + 3), shade);
     }
 }
 
@@ -480,6 +624,7 @@ void PlantEngine::updatePhysics(uint32_t deltaMs, float windStrength) {
     int16_t primaryWave = lutSin(_windPhase);                             // -127 to +127
     int16_t harmonicWave = lutSin((uint8_t)(_windPhase * 2 + 48)) >> 3;  // Subtle harmonic flutter
     int16_t totalBreeze = primaryWave + harmonicWave;                    // -143 to +143
+    _curWindOffset = totalBreeze;
 
     // Coherent forward kinematics (whole plant sways harmoniously with breeze)
     for (uint8_t i = 0; i < _segmentCount; i++) {

@@ -15,11 +15,12 @@ enum ParticleType : uint8_t {
     PARTICLE_FIREFLY,           // Dusk/Night: wandering bioluminescent mote
     PARTICLE_MIST_DROP,         // Rain mist or fog: condensation droplet
     PARTICLE_RAIN_CASCADE,      // User interaction: falling raindrop burst
-    PARTICLE_POLLEN_MOTE,       // Golden Hour/Day: floating golden flower pollen
-    PARTICLE_SEED_MOTE,         // Pollination: fertile seed falling to soil
+    PARTICLE_POLLEN_MOTE,       // Daylight/golden hour: golden mote from a mature flower
+    PARTICLE_SEED_MOTE,         // Pollination: fertile seed falling into the soil
     PARTICLE_RAIN_STREAK,       // Live rain: fast diagonal streak
     PARTICLE_SNOWFLAKE,         // Live snow: slow crystalline mote
-    PARTICLE_NOCTURNAL_SPORE    // 23:00–05:00: softly glowing spore mote
+    PARTICLE_NOCTURNAL_SPORE,   // 23:00–05:00: softly glowing spore mote
+    PARTICLE_GOLDEN_SPARKLE     // Brief golden cross where pollen meets a neighbor
 };
 
 struct Particle {
@@ -32,6 +33,7 @@ struct Particle {
     uint8_t type;       // ParticleType
     uint8_t size;       // 1 = 1x1 pixel, 2 = 2x2, 3 = cross glow
     uint8_t phase;      // Sine phase for pulsing/flutter
+    uint8_t tag;        // Pollen: origin flower index. Unused by other types.
     bool active;
 };
 
@@ -57,10 +59,12 @@ private:
     Particle _pool[MAX_PARTICLES];
     uint32_t _lastSpawnTime;
     uint32_t _lastSporeSpawn;
+    uint32_t _lastPollination;
     uint8_t _globalPhase;
 
     void spawnAmbient(TimePhase phase, WeatherType weather, uint8_t humidityPct, uint8_t precipIntensity);
     int8_t findFreeSlot();
+    void tryCrossPollinate(Particle& mote, uint32_t now);
 };
 
 extern ParticleSystem Particles;

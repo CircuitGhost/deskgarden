@@ -103,6 +103,16 @@ struct FlowerNodePos {
     bool isMature;
 };
 
+#define MAX_SOIL_SEED_PODS 6
+
+struct SoilSeedPod {
+    int16_t x;
+    uint8_t depth;          // Pixels below the soil surface, inside the humus
+    uint8_t phase;
+    uint8_t age;
+    bool active;
+};
+
 class PlantEngine {
 public:
     PlantEngine();
@@ -126,6 +136,16 @@ public:
 
     // Pollination mechanics
     void fertilizeFlower(uint8_t flowerIdx);
+
+    // Previous tick's breeze sample (-143..143). Pollen leans with this sway.
+    int16_t getWindSway() const { return _curWindOffset; }
+
+    // True when (x, y) meets a branch or flower other than originFlower.
+    bool touchesNeighborCanopy(int16_t x, int16_t y, uint8_t originFlower) const;
+
+    // Fixed soil-strata pod. Reuses the oldest slot when the bed is full.
+    bool depositSoilSeedPod(int16_t x);
+    void renderSoilSeedPods(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight) const;
 
     // Vector-to-Raster Framebuffer Rendering
     void render(uint16_t* buffer, int16_t screenWidth = SCREEN_WIDTH, int16_t screenHeight = SCREEN_HEIGHT);
@@ -153,6 +173,8 @@ private:
     uint8_t _flowerCount;
     FlowerAttributes _flowerStyle;
 
+    SoilSeedPod _soilPods[MAX_SOIL_SEED_PODS];
+
     float _growthProgress;     // 0.0f to 1.0f
     float _targetGrowth;
     float _diurnalOpenTarget;  // Diurnal target for petals (0.0=night, 1.0=day)
@@ -175,6 +197,7 @@ private:
 
     void generateRoots();
     void configureFlowerStyle();
+    void clearSoilSeedPods();
 
     // Drawing primitives
     void drawThickLine(uint16_t* buffer, int16_t x0, int16_t y0, 
