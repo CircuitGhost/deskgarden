@@ -13,10 +13,12 @@ enum ParticleType : uint8_t {
     PARTICLE_NONE = 0,
     PARTICLE_OXYGEN_MOTE,       // Daylight: rising translucent oxygen bubble
     PARTICLE_FIREFLY,           // Dusk/Night: wandering bioluminescent mote
-    PARTICLE_MIST_DROP,         // Rain/Humid: drifting condensation droplet
+    PARTICLE_MIST_DROP,         // Rain mist or fog: condensation droplet
     PARTICLE_RAIN_CASCADE,      // User interaction: falling raindrop burst
     PARTICLE_POLLEN_MOTE,       // Golden Hour/Day: floating golden flower pollen
-    PARTICLE_SEED_MOTE          // Pollination: fertile seed falling to soil
+    PARTICLE_SEED_MOTE,         // Pollination: fertile seed falling to soil
+    PARTICLE_RAIN_STREAK,       // Live rain: fast diagonal streak
+    PARTICLE_SNOWFLAKE          // Live snow: slow crystalline mote
 };
 
 struct Particle {
@@ -38,7 +40,8 @@ public:
     void begin();
     
     // Core simulation tick
-    void update(uint32_t deltaMs, TimePhase phase, WeatherType weather);
+    void update(uint32_t deltaMs, TimePhase phase, WeatherType weather,
+                uint8_t humidityPct = 0, uint8_t precipIntensity = 0);
     
     // User interaction: Watering cascade
     void triggerWateringCascade(uint8_t count = 20);
@@ -53,7 +56,7 @@ private:
     uint32_t _lastSpawnTime;
     uint8_t _globalPhase;
 
-    void spawnAmbient(TimePhase phase, WeatherType weather);
+    void spawnAmbient(TimePhase phase, WeatherType weather, uint8_t humidityPct, uint8_t precipIntensity);
     int8_t findFreeSlot();
 };
 

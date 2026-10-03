@@ -57,6 +57,28 @@ static const uint8_t glyph_moon[8] = {
     0b00000000
 };
 
+static const uint8_t glyph_snow[8] = {
+    0b00110110,
+    0b01111111,
+    0b11111111,
+    0b01111110,
+    0b00000000,
+    0b10100010,
+    0b01010100,
+    0b10100010
+};
+
+static const uint8_t glyph_fog[8] = {
+    0b00000000,
+    0b00111100,
+    0b01111110,
+    0b00000000,
+    0b00011110,
+    0b01111111,
+    0b00111100,
+    0b00000000
+};
+
 void drawWeatherGlyph(uint16_t* buffer, int16_t bufWidth, int16_t bufHeight, 
                       int16_t x, int16_t y, WeatherType type) {
     if (!buffer) return;
@@ -88,6 +110,16 @@ void drawWeatherGlyph(uint16_t* buffer, int16_t bufWidth, int16_t bufHeight,
             bitmap = glyph_moon;
             primaryColor = COLOR_LAVENDER;
             break;
+        case WEATHER_SNOW:
+            bitmap = glyph_snow;
+            primaryColor = COLOR_LIGHTGREY;
+            secondaryColor = rgb565(235, 245, 255);
+            break;
+        case WEATHER_FOG:
+            bitmap = glyph_fog;
+            primaryColor = rgb565(168, 176, 188);
+            secondaryColor = rgb565(198, 214, 224);
+            break;
     }
 
     if (!bitmap) return;
@@ -103,8 +135,10 @@ void drawWeatherGlyph(uint16_t* buffer, int16_t bufWidth, int16_t bufHeight,
 
             if (rowBits & (1 << (7 - col))) {
                 uint16_t colVal = primaryColor;
-                // For rain drops (bottom 3 rows of rain glyph), color with cyan
-                if (type == WEATHER_RAIN && row >= 5) {
+                // Precipitation and mist marks sit on the lower rows of the glyph.
+                if ((type == WEATHER_RAIN || type == WEATHER_SNOW) && row >= 5) {
+                    colVal = secondaryColor;
+                } else if (type == WEATHER_FOG && row >= 4) {
                     colVal = secondaryColor;
                 }
                 buffer[py * bufWidth + px] = colVal;

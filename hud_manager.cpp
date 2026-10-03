@@ -13,6 +13,7 @@ HudManager::HudManager()
       _weatherType(WEATHER_SUN),
       _temperatureF(72),
       _humidityPct(64),
+      _precipIntensity(0),
       _generationIndex(1),
       _colonPulsePhase(0.0f) {}
 
@@ -54,10 +55,11 @@ void HudManager::setTime(uint8_t hour, uint8_t min, uint8_t sec, bool is24h) {
     _isPM = (_hour >= 12);
 }
 
-void HudManager::setWeather(WeatherType type, int16_t tempF, uint8_t humidityPct) {
+void HudManager::setWeather(WeatherType type, int16_t tempF, uint8_t humidityPct, uint8_t precipIntensity) {
     _weatherType = type;
     _temperatureF = tempF;
     _humidityPct = humidityPct;
+    _precipIntensity = precipIntensity;
 }
 
 void HudManager::setGeneration(uint8_t genIndex) {
