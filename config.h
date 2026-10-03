@@ -53,7 +53,7 @@
 #define LCD_BL_PWM_CHANNEL   0
 #define LCD_BL_PWM_FREQ      5000
 #define LCD_BL_PWM_RES       8     // 8-bit resolution (0-255)
-#define DEFAULT_BRIGHTNESS   220   // 0 - 255
+#define DEFAULT_BRIGHTNESS   160   // 0 - 255 (cool-running thermal profile)
 
 // ==========================================
 // Performance & Rendering Pipeline

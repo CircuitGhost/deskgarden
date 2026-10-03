@@ -367,20 +367,23 @@ uint8_t WebDashboard::backlightFor(uint8_t hour, uint8_t minute) const {
     uint16_t now = (uint16_t)hour * 60u + minute;
     uint16_t start = (uint16_t)_quietStart * 60u;
     uint16_t end = (uint16_t)_quietEnd * 60u;
-    if (start == end) return 220;
+    const uint8_t maxB = DEFAULT_BRIGHTNESS; // 160
+    const uint8_t minB = 35;
+
+    if (start == end) return maxB;
 
     bool quiet = (start < end) ? (now >= start && now < end) : (now >= start || now < end);
-    if (quiet) return 45;
+    if (quiet) return minB;
 
     uint16_t sinceEnd = minutesForward(end, now);
     if (sinceEnd <= 30) {
-        return (uint8_t)(45u + (sinceEnd * (220u - 45u)) / 30u);
+        return (uint8_t)(minB + (sinceEnd * (maxB - minB)) / 30u);
     }
     uint16_t untilStart = minutesForward(now, start);
     if (untilStart <= 30) {
-        return (uint8_t)(45u + (untilStart * (220u - 45u)) / 30u);
+        return (uint8_t)(minB + (untilStart * (maxB - minB)) / 30u);
     }
-    return 220;
+    return maxB;
 }
 
 void WebDashboard::sendTelemetry() {
