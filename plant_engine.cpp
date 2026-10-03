@@ -31,6 +31,29 @@ static inline int8_t lutCos(uint8_t angle) {
     return SIN_LUT[(angle + 64) & 255];
 }
 
+// Pull a stored RGB565 color a little toward bioluminescent mint/cyan. amount is 0..255.
+static uint16_t blendMintCyan(uint16_t base, uint8_t amount) {
+    if (amount == 0) return base;
+
+    int16_t r = (base >> 11) & 0x1F;
+    int16_t g = (base >> 5) & 0x3F;
+    int16_t b = base & 0x1F;
+    const int16_t mr = 110 >> 3;  // ~110
+    const int16_t mg = 250 >> 2;  // ~250
+    const int16_t mb = 220 >> 3;  // ~220
+
+    r += ((mr - r) * amount) / 255;
+    g += ((mg - g) * amount) / 255;
+    b += ((mb - b) * amount) / 255;
+    if (r < 0) r = 0;
+    if (g < 0) g = 0;
+    if (b < 0) b = 0;
+    if (r > 31) r = 31;
+    if (g > 63) g = 63;
+    if (b > 31) b = 31;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 // Crockford's Base32 Alphabet (No ambiguous 0/O, 1/I/L)
 static const char BASE32_ALPHABET[] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -54,6 +77,8 @@ PlantEngine::PlantEngine()
       _windPhase(0),
       _gustPhase(0),
       _curWindOffset(0),
+      _phosphoElapsedMs(0),
+      _phosphoBlend(0),
       _prngState(123456789) {}
 
 void PlantEngine::begin() {
@@ -64,6 +89,8 @@ void PlantEngine::begin() {
     _windPhase = 0;
     _gustPhase = 0;
     _curWindOffset = 0;
+    _phosphoElapsedMs = 0;
+    _phosphoBlend = 0;
 
     // Default botanical specimen genome (Highland Orchid)
     PlantGenome defaultGenome;
@@ -381,7 +408,7 @@ void PlantEngine::setGrowthProgress(float progress) {
     _targetGrowth = progress;
 }
 
-void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase) {
+void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour, uint8_t minute) {
     // 1. Target growth interpolation
     if (_growthProgress < _targetGrowth) {
         _growthProgress += (deltaMs * 0.0002f);
@@ -414,6 +441,20 @@ void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase) {
 
     for (uint8_t i = 0; i < _flowerCount; i++) {
         _flowers[i].diurnalOpenRatio = _currentDiurnalOpen;
+    }
+
+    // 0.1 Hz mint/cyan pulse, only from 23:00 through 05:00. Night phase itself is wider.
+    if (isPhosphorescentHour(hour, minute)) {
+        _phosphoElapsedMs += deltaMs;
+        while (_phosphoElapsedMs >= 10000) {
+            _phosphoElapsedMs -= 10000;
+        }
+        uint8_t angle = (uint8_t)((_phosphoElapsedMs * 256UL) / 10000UL);
+        uint8_t uni = (uint8_t)(lutSin(angle) + 127); // 0..254 across the 10s cycle
+        _phosphoBlend = (uint8_t)(40 + (uni / 4));    // about 16%..40% toward mint/cyan
+    } else {
+        _phosphoElapsedMs = 0;
+        _phosphoBlend = 0;
     }
 }
 
@@ -601,10 +642,15 @@ void PlantEngine::drawFlower(uint16_t* buffer, int16_t x, int16_t y, uint8_t ang
         int16_t pRightX = pMidX + (lutCos(pPerp) * pWid) / 127;
         int16_t pRightY = pMidY + (lutSin(pPerp) * pWid) / 127;
 
+        uint16_t marginColor = _flowerStyle.petalHighlight;
+        if (_phosphoBlend > 0) {
+            marginColor = blendMintCyan(marginColor, _phosphoBlend);
+        }
+
         drawThickLine(buffer, x, y, pLeftX, pLeftY, 1, _flowerStyle.petalColor, bufWidth, bufHeight);
-        drawThickLine(buffer, pLeftX, pLeftY, pTipX, pTipY, 1, _flowerStyle.petalHighlight, bufWidth, bufHeight);
+        drawThickLine(buffer, pLeftX, pLeftY, pTipX, pTipY, 1, marginColor, bufWidth, bufHeight);
         drawThickLine(buffer, x, y, pRightX, pRightY, 1, _flowerStyle.petalColor, bufWidth, bufHeight);
-        drawThickLine(buffer, pRightX, pRightY, pTipX, pTipY, 1, _flowerStyle.petalHighlight, bufWidth, bufHeight);
+        drawThickLine(buffer, pRightX, pRightY, pTipX, pTipY, 1, marginColor, bufWidth, bufHeight);
         drawThickLine(buffer, pLeftX, pLeftY, pRightX, pRightY, 2, _flowerStyle.petalColor, bufWidth, bufHeight);
     }
 
@@ -639,8 +685,12 @@ void PlantEngine::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHe
         uint8_t curLeafWid = (uint8_t)(seg.leafWidth * _growthProgress);
 
         if (curLeafLen >= 2) {
+            uint16_t veinColor = seg.leafVeinColor;
+            if (_phosphoBlend > 0) {
+                veinColor = blendMintCyan(veinColor, _phosphoBlend);
+            }
             drawLeaf(buffer, seg.curX1, seg.curY1, seg.leafAngle, 
-                     curLeafLen, curLeafWid, seg.leafColor, seg.leafVeinColor,
+                     curLeafLen, curLeafWid, seg.leafColor, veinColor,
                      screenWidth, screenHeight);
         }
     }

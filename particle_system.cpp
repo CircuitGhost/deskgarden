@@ -79,6 +79,27 @@ static void activateFogDroplet(Particle& p) {
     p.active = true;
 }
 
+static void activateNocturnalSpore(Particle& p) {
+    LeafNodePos leaves[16];
+    uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
+    if (leafCount > 0) {
+        uint8_t idx = (uint8_t)(rand() % leafCount);
+        p.x = leaves[idx].x << 4;
+        p.y = (leaves[idx].y - 1) << 4;
+    } else {
+        p.x = (int16_t)((rand() % (SCREEN_WIDTH - 24) + 12) << 4);
+        p.y = (int16_t)((HUD_HEIGHT + 40 + (rand() % (CANOPY_HEIGHT - 80))) << 4);
+    }
+    p.vx = (int16_t)(rand() % 7 - 3);
+    p.vy = (int16_t)(-(rand() % 5 + 2));
+    p.life = (uint8_t)(110 + (rand() % 50));
+    p.maxLife = p.life;
+    p.type = PARTICLE_NOCTURNAL_SPORE;
+    p.size = (rand() % 2) ? 3 : 2;
+    p.phase = (uint8_t)(rand() % 32);
+    p.active = true;
+}
+
 static void activateSnowflake(Particle& p) {
     p.x = (int16_t)((rand() % (SCREEN_WIDTH - 8) + 4) << 4);
     p.y = (int16_t)((HUD_HEIGHT + 2) << 4);
@@ -94,6 +115,7 @@ static void activateSnowflake(Particle& p) {
 
 ParticleSystem::ParticleSystem()
     : _lastSpawnTime(0),
+      _lastSporeSpawn(0),
       _globalPhase(0) {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
@@ -105,6 +127,7 @@ void ParticleSystem::begin() {
         _pool[i].active = false;
     }
     _lastSpawnTime = millis();
+    _lastSporeSpawn = millis();
     _globalPhase = 0;
 }
 
@@ -259,7 +282,8 @@ void ParticleSystem::triggerWateringCascade(uint8_t count) {
 }
 
 void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weather,
-                            uint8_t humidityPct, uint8_t precipIntensity) {
+                            uint8_t humidityPct, uint8_t precipIntensity,
+                            uint8_t hour, uint8_t minute) {
     _globalPhase++;
     uint32_t now = millis();
 
@@ -290,6 +314,15 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             spawnAmbient(phase, weather, humidityPct, precipIntensity);
         }
         _lastSpawnTime = now;
+    }
+
+    // Midnight spores use a free pool slot. Rain, snow, fog, and the watering cascade are left in place.
+    if (isPhosphorescentHour(hour, minute) && (now - _lastSporeSpawn) >= 320) {
+        int8_t slot = findFreeSlot();
+        if (slot >= 0) {
+            activateNocturnalSpore(_pool[slot]);
+        }
+        _lastSporeSpawn = now;
     }
 
     // Update active particles
@@ -325,6 +358,11 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
         } else if (p.type == PARTICLE_SEED_MOTE || p.type == PARTICLE_RAIN_STREAK || p.type == PARTICLE_RAIN_CASCADE) {
             p.x += p.vx;
             p.y += p.vy;
+        } else if (p.type == PARTICLE_NOCTURNAL_SPORE) {
+            int16_t wanderX = fastSin((uint8_t)(p.phase + (i * 3))) >> 5;
+            int16_t wanderY = fastSin((uint8_t)((p.phase * 2) + i)) >> 5;
+            p.x += (p.vx + wanderX);
+            p.y += (p.vy + wanderY);
         } else if (p.type == PARTICLE_SNOWFLAKE) {
             // Crystalline flakes drift on the same sine sway as the other motes.
             int16_t driftX = fastSin((uint8_t)(p.phase + (i * 5))) >> 3;
@@ -428,6 +466,19 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
             buffer[py * screenWidth + px] = rgb565(190, 210, 225);
             if (p.size >= 2 && py + 1 < screenHeight) {
                 buffer[(py + 1) * screenWidth + px] = rgb565(150, 175, 195);
+            }
+        }
+        else if (p.type == PARTICLE_NOCTURNAL_SPORE) {
+            uint8_t age = (uint8_t)(p.maxLife - p.life);
+            bool burst = (age % 96) < 12;
+            uint16_t color = burst ? rgb565(186, 255, 236) : rgb565(36, 128, 118);
+            buffer[py * screenWidth + px] = color;
+            if (burst && p.size >= 2) {
+                uint16_t glow = rgb565(24, 72, 68);
+                if (py > 0) buffer[(py - 1) * screenWidth + px] = glow;
+                if (py + 1 < screenHeight) buffer[(py + 1) * screenWidth + px] = glow;
+                if (px > 0) buffer[py * screenWidth + (px - 1)] = glow;
+                if (px + 1 < screenWidth) buffer[py * screenWidth + (px + 1)] = glow;
             }
         }
         else if (p.type == PARTICLE_SNOWFLAKE) {

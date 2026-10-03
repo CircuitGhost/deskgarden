@@ -13,6 +13,12 @@ enum TimePhase {
     PHASE_NIGHT            // 21:30 - 05:30 (Obsidian navy & bioluminescent ambience)
 };
 
+// Midnight phosphorescence is narrower than PHASE_NIGHT: 23:00 inclusive through 05:00 exclusive.
+inline bool isPhosphorescentHour(uint8_t hour, uint8_t minute) {
+    uint16_t mins = (uint16_t)hour * 60u + minute;
+    return mins >= (23u * 60u) || mins < (5u * 60u);
+}
+
 struct AtmospherePalette {
     uint8_t skyTopR, skyTopG, skyTopB;
     uint8_t skyBottomR, skyBottomG, skyBottomB;
