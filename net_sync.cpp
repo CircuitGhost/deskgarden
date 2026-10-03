@@ -11,6 +11,7 @@
 #include "hal_peripherals.h"
 #include "plant_engine.h"
 #include "state_storage.h"
+#include "mesh_sync.h"
 
 NetSyncManager NetSync;
 
@@ -255,6 +256,11 @@ void NetSyncManager::stopCaptivePortal() {
     server.stop();
     dnsServer.stop();
     WiFi.softAPdisconnect(true);
+    // The hold-to-exit path used to leave the radio parked in portal state
+    // after the AP was already gone, which blocked desk-mesh discovery.
+    if (_state == NET_STATE_PORTAL_ACTIVE) {
+        _state = NET_STATE_OFFLINE;
+    }
 }
 
 void NetSyncManager::connectWiFi() {
@@ -282,6 +288,8 @@ const char* NetSyncManager::getStateString() const {
 }
 
 void NetSyncManager::taskLoop() {
+    Mesh.service();
+
     uint32_t now = millis();
 
     // 1. Handle Captive Portal loop

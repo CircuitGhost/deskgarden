@@ -122,6 +122,15 @@ struct SoilSeedPod {
     bool active;
 };
 
+// Traits carried by a spore that arrived from another Deskflower.
+struct ForeignParent {
+    uint32_t seed;
+    uint8_t phenotype;
+    uint8_t petalPalette;
+    uint8_t stemHue;
+    uint16_t petalColor;
+};
+
 class PlantEngine {
 public:
     PlantEngine();
@@ -134,6 +143,10 @@ public:
     // 16-Character Seed Code Engine (Base32: XXXX-XXXX-XXXX-XXXX)
     void getSeedCode(char* outCode20) const;
     bool loadSeedCode(const char* inCode);
+
+    // Fold this plant together with a foreign spore. The living specimen stays put.
+    bool composeHybridSeedCode(const ForeignParent& foreign, char* outCode20, PlantGenome* outGenome = nullptr) const;
+    uint16_t getPetalColor() const { return _flowerStyle.petalColor; }
 
     // Lifecycle, Growth & Diurnal Blooming Animation
     void setGrowthProgress(float progress);

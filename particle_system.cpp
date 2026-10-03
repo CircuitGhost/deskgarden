@@ -3,6 +3,7 @@
 ParticleSystem Particles;
 
 #include "plant_engine.h"
+#include "mesh_sync.h"
 
 // Precomputed 32-step sine table for integer math on RISC-V (values -127 to +127)
 static const int8_t SIN_TABLE_32[32] = {
@@ -237,6 +238,7 @@ ParticleSystem::ParticleSystem()
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
         _pool[i].tag = 0;
+        _lineage[i].foreign = false;
     }
 }
 
@@ -244,6 +246,8 @@ void ParticleSystem::begin() {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
         _pool[i].tag = 0;
+        _lineage[i].foreign = false;
+        _lineage[i].seed = 0;
     }
     _lastSpawnTime = millis();
     _lastSporeSpawn = millis();
@@ -259,9 +263,53 @@ void ParticleSystem::begin() {
 
 int8_t ParticleSystem::findFreeSlot() {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
-        if (!_pool[i].active) return i;
+        if (!_pool[i].active) {
+            _lineage[i].foreign = false;
+            return i;
+        }
     }
     return -1;
+}
+
+bool ParticleSystem::receiveSpore(int16_t y, uint8_t arriveEdge, int16_t vx, int16_t vy,
+                                  uint32_t seed, uint8_t phenotype, uint8_t petalPalette,
+                                  uint8_t stemHue, uint16_t petalColor) {
+    int8_t slot = findFreeSlot();
+    if (slot < 0) return false;
+
+    if (y < (int16_t)(HUD_HEIGHT + 2)) y = (int16_t)(HUD_HEIGHT + 2);
+    int16_t yMax = (int16_t)(SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 4);
+    if (y > yMax) y = yMax;
+
+    int16_t x = (arriveEdge == MESH_EDGE_LEFT) ? 1 : (int16_t)(SCREEN_WIDTH - 2);
+    int16_t ivx = vx;
+    if (arriveEdge == MESH_EDGE_LEFT) {
+        if (ivx < 6) ivx = 10;
+    } else if (ivx > -6) {
+        ivx = -10;
+    }
+
+    Particle& p = _pool[slot];
+    p.x = (int16_t)(x << 4);
+    p.y = (int16_t)(y << 4);
+    p.vx = ivx;
+    p.vy = vy;
+    p.life = 220;
+    p.maxLife = 220;
+    p.type = PARTICLE_POLLEN_MOTE;
+    p.size = 2;
+    p.phase = 0;
+    p.tag = 0xFE;
+    p.active = true;
+
+    SporeLineage& line = _lineage[slot];
+    line.seed = seed;
+    line.petalColor = petalColor;
+    line.phenotype = phenotype & 0x03;
+    line.petalPalette = (petalPalette > 4) ? 0 : petalPalette;
+    line.stemHue = stemHue & 0x03;
+    line.foreign = true;
+    return true;
 }
 
 uint8_t ParticleSystem::getActiveCount() const {
@@ -885,12 +933,27 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
         }
 
         if (p.type == PARTICLE_POLLEN_MOTE) {
-            tryCrossPollinate(p, now);
+            tryCrossPollinate(p, i, now);
         }
 
         // Screen boundary checks (Canopy space: HUD_HEIGHT to SCREEN_HEIGHT - 2)
         int16_t px = p.x >> 4;
         int16_t py = p.y >> 4;
+
+        // Local pollen that drifts off a side is offered to the nearest desk neighbor.
+        // Foreign spores are not forwarded, so a mote cannot bounce between units.
+        if (p.type == PARTICLE_POLLEN_MOTE && !_lineage[i].foreign &&
+            (px < 0 || px >= SCREEN_WIDTH) &&
+            py >= HUD_HEIGHT && py < (SCREEN_HEIGHT - 2)) {
+            const PlantGenome& genome = Plant.getGenome();
+            Mesh.handoffSpore((px < 0) ? MESH_EDGE_LEFT : MESH_EDGE_RIGHT,
+                              py, p.vx, p.vy,
+                              genome.seed, genome.phenotype, genome.petalPalette,
+                              genome.stemHue, genome.petalCount, Plant.getPetalColor());
+            p.active = false;
+            _lineage[i].foreign = false;
+            continue;
+        }
 
         if (p.type == PARTICLE_SEED_MOTE &&
             px >= 0 && px < SCREEN_WIDTH &&
@@ -906,7 +969,7 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
     }
 }
 
-void ParticleSystem::tryCrossPollinate(Particle& mote, uint32_t now) {
+void ParticleSystem::tryCrossPollinate(Particle& mote, uint8_t index, uint32_t now) {
     if (mote.type != PARTICLE_POLLEN_MOTE) return;
 
     uint16_t lived = (uint16_t)(mote.maxLife - mote.life);
@@ -916,6 +979,24 @@ void ParticleSystem::tryCrossPollinate(Particle& mote, uint32_t now) {
     int16_t hx = (int16_t)(mote.x >> 4);
     int16_t hy = (int16_t)(mote.y >> 4);
     if (!Plant.touchesNeighborCanopy(hx, hy, mote.tag)) return;
+
+    if (index < MAX_PARTICLES && _lineage[index].foreign) {
+        ForeignParent parent;
+        parent.seed = _lineage[index].seed;
+        parent.phenotype = _lineage[index].phenotype;
+        parent.petalPalette = _lineage[index].petalPalette;
+        parent.stemHue = _lineage[index].stemHue;
+        parent.petalColor = _lineage[index].petalColor;
+        char code[20];
+        PlantGenome child;
+        if (Plant.composeHybridSeedCode(parent, code, &child)) {
+            Mesh.rememberSeed(code, MESH_SEED_HYBRID, child.phenotype, child.petalPalette, child.stemHue);
+            #if ENABLE_SERIAL_LOG
+            Serial.printf("[MESH] Hybrid seed %s\n", code);
+            #endif
+        }
+        _lineage[index].foreign = false;
+    }
 
     int8_t spark = findFreeSlot();
     bool carrySparkle = true;
@@ -962,10 +1043,13 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
             }
         } 
         else if (p.type == PARTICLE_POLLEN_MOTE) {
-            // Golden glowing pollen grain
-            uint16_t color = rgb565(255, 225, 60);
+            // Golden grain. A spore that crossed from a neighbor keeps a cool arrival glint.
+            bool inbound = (p.tag == 0xFE);
+            uint16_t color = inbound ? rgb565(255, 210, 90) : rgb565(255, 225, 60);
             buffer[py * screenWidth + px] = color;
-            if (py > 0 && px > 0 && (p.phase & 4)) {
+            if (inbound && px > 0) {
+                buffer[py * screenWidth + (px - 1)] = rgb565(120, 230, 255);
+            } else if (py > 0 && px > 0 && (p.phase & 4)) {
                 buffer[(py - 1) * screenWidth + px] = rgb565(200, 160, 30);
             }
         }

@@ -55,6 +55,12 @@ public:
     
     // User interaction: Watering cascade
     void triggerWateringCascade(uint8_t count = 20);
+
+    // A foreign pollen mote enters from the opposite edge of the screen it left.
+    // Uses one pool slot. Returns false when the pool is full.
+    bool receiveSpore(int16_t y, uint8_t arriveEdge, int16_t vx, int16_t vy,
+                      uint32_t seed, uint8_t phenotype, uint8_t petalPalette,
+                      uint8_t stemHue, uint16_t petalColor);
     
     // Full Frame Renderer
     void render(uint16_t* buffer, int16_t screenWidth = SCREEN_WIDTH, int16_t screenHeight = SCREEN_HEIGHT);
@@ -74,13 +80,23 @@ private:
     uint32_t _lastSnailSpawn;
     uint8_t _globalPhase;
 
+    struct SporeLineage {
+        uint32_t seed;
+        uint16_t petalColor;
+        uint8_t phenotype;
+        uint8_t petalPalette;
+        uint8_t stemHue;
+        bool foreign;
+    };
+    SporeLineage _lineage[MAX_PARTICLES];
+
     void spawnAmbient(TimePhase phase, WeatherType weather, uint8_t humidityPct, uint8_t precipIntensity);
     void spawnSeasonal(uint32_t now, TimePhase phase, WeatherType weather,
                        uint8_t humidityPct, uint8_t month, uint8_t day);
     void spawnFauna(uint32_t now, TimePhase phase);
     bool hasActive(uint8_t type) const;
     int8_t findFreeSlot();
-    void tryCrossPollinate(Particle& mote, uint32_t now);
+    void tryCrossPollinate(Particle& mote, uint8_t index, uint32_t now);
 };
 
 extern ParticleSystem Particles;

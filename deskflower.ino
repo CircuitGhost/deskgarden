@@ -8,6 +8,7 @@
 #include "plant_engine.h"
 #include "moisture_system.h"
 #include "net_sync.h"
+#include "mesh_sync.h"
 #include "state_storage.h"
 #include "renderer.h"
 
@@ -59,6 +60,7 @@ void setup() {
 
     // 4. Initialize LittleFS Persistent State Storage (Restores saved specimen, generation, and moisture)
     Storage.begin();
+    Mesh.begin();
 
     HUD.setTime(demoHours[demoTimeStep], 42, 0, false);
     HUD.setWeather(demoWeathers[demoTimeStep], 72, 64);
@@ -140,6 +142,7 @@ void loop() {
     uint32_t deltaHud = currentMillis - lastHudUpdateTime;
     if (deltaHud >= 16) {
         NetSync.update(deltaHud);
+        Mesh.update();
         Storage.update(deltaHud);
         HUD.update(deltaHud);
         Atmosphere.update(HUD.getHour(), HUD.getMinute(), HUD.getSecond());
@@ -187,10 +190,11 @@ void loop() {
             const char* mStateStr = Moisture.isAestivating() ? "DORMANT" : (Moisture.getMoisture() < 40.0f ? "THIRSTY" : "LUSH");
             char seedCode[20];
             Plant.getSeedCode(seedCode);
-            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Net: %s | Moisture: %.0f%% (%s) | Gen %u | Code: %s | Waters: %u | Uptime: %u m | Free Heap: %u B\n",
+            Serial.printf("[DIAG] FPS: %.1f | Render: %u us | Net: %s | Peers: %u | Moisture: %.0f%% (%s) | Gen %u | Code: %s | Waters: %u | Uptime: %u m | Free Heap: %u B\n",
                           Renderer.getMeasuredFPS(),
                           Renderer.getFrameRenderTimeUs(),
                           NetSync.getStateString(),
+                          Mesh.peerCount(),
                           Moisture.getMoisture(),
                           mStateStr,
                           HUD.getGeneration(),

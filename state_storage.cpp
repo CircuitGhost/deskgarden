@@ -3,6 +3,7 @@
 #include "plant_engine.h"
 #include "moisture_system.h"
 #include "hud_manager.h"
+#include "mesh_sync.h"
 
 StateStorage Storage;
 
@@ -187,6 +188,7 @@ bool StateStorage::saveImmediate() {
     if (!_isMounted) return false;
 
     populateCurrentState();
+    meshFsLock();
 
     // Atomic save pattern: Write to temporary file, flush, then rename
     File f = LittleFS.open(TEMP_FILE, "w");
@@ -194,6 +196,7 @@ bool StateStorage::saveImmediate() {
         #if ENABLE_SERIAL_LOG
         Serial.println("[STORAGE] Failed to open temporary state file for writing.");
         #endif
+        meshFsUnlock();
         return false;
     }
 
@@ -206,6 +209,7 @@ bool StateStorage::saveImmediate() {
         Serial.println("[STORAGE] Incomplete state write.");
         #endif
         LittleFS.remove(TEMP_FILE);
+        meshFsUnlock();
         return false;
     }
 
@@ -227,6 +231,7 @@ bool StateStorage::saveImmediate() {
         #endif
     }
 
+    meshFsUnlock();
     return renameOk;
 }
 

@@ -441,24 +441,57 @@ void PlantEngine::growSegmentRecursive(int16_t startX, int16_t startY, uint8_t a
     }
 }
 
+static uint16_t paletteColor(uint8_t index) {
+    switch (index) {
+        case 1: return rgb565(255, 140, 180); // Cherry Blossom
+        case 2: return rgb565(255, 140, 20);  // Solar Amber
+        case 3: return rgb565(30, 210, 240);  // Bioluminescent Cyan
+        case 4: return rgb565(225, 230, 255); // Moon Lily
+        default: return rgb565(230, 45, 140); // Magenta Orchid
+    }
+}
+
+static uint8_t nearestPetalPalette(uint16_t color) {
+    uint8_t best = 0;
+    uint32_t bestDist = 0xFFFFFFFFu;
+    for (uint8_t i = 0; i < 5; i++) {
+        uint16_t sample = paletteColor(i);
+        int dr = (int)((color >> 11) & 31) - (int)((sample >> 11) & 31);
+        int dg = (int)((color >> 5) & 63) - (int)((sample >> 5) & 63);
+        int db = (int)(color & 31) - (int)(sample & 31);
+        uint32_t dist = (uint32_t)(dr * dr + dg * dg + db * db);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static uint8_t clampByte(int value, uint8_t lo, uint8_t hi) {
+    if (value < (int)lo) return lo;
+    if (value > (int)hi) return hi;
+    return (uint8_t)value;
+}
+
 // 16-Character Seed Code Engine (Crockford Base32: XXXX-XXXX-XXXX-XXXX)
-void PlantEngine::getSeedCode(char* outCode20) const {
+static void encodeSeedCode(const PlantGenome& genome, char* outCode20) {
     if (!outCode20) return;
 
     // Pack 80-bit genetic payload into uint32_t chunks
-    uint32_t p0 = _genome.seed;
-    uint32_t p1 = ((uint32_t)(_genome.phenotype & 0x03) << 28) |
-                  ((uint32_t)(_genome.maxDepth & 0x07) << 25) |
-                  ((uint32_t)(_genome.baseLength & 0x7F) << 18) |
-                  ((uint32_t)(_genome.branchAngle & 0x3F) << 12) |
-                  ((uint32_t)(_genome.lengthDecayPct & 0x3F) << 6) |
-                  ((uint32_t)(_genome.stemHue & 0x03) << 4) |
-                  ((uint32_t)(_genome.petalPalette & 0x07) << 1) |
-                  ((uint32_t)(_genome.petalCount & 0x01));
+    uint32_t p0 = genome.seed;
+    uint32_t p1 = ((uint32_t)(genome.phenotype & 0x03) << 28) |
+                  ((uint32_t)(genome.maxDepth & 0x07) << 25) |
+                  ((uint32_t)(genome.baseLength & 0x7F) << 18) |
+                  ((uint32_t)(genome.branchAngle & 0x3F) << 12) |
+                  ((uint32_t)(genome.lengthDecayPct & 0x3F) << 6) |
+                  ((uint32_t)(genome.stemHue & 0x03) << 4) |
+                  ((uint32_t)(genome.petalPalette & 0x07) << 1) |
+                  ((uint32_t)(genome.petalCount & 0x01));
 
-    uint16_t p2 = ((uint16_t)(_genome.leafShape & 0x03) << 14) |
-                  ((uint16_t)(_genome.foliageDensity & 0x7F) << 7) |
-                  ((uint16_t)(_genome.swayFlexibility & 0x07) << 4);
+    uint16_t p2 = ((uint16_t)(genome.leafShape & 0x03) << 14) |
+                  ((uint16_t)(genome.foliageDensity & 0x7F) << 7) |
+                  ((uint16_t)(genome.swayFlexibility & 0x07) << 4);
 
     // Compute simple checksum
     uint8_t checksum = (uint8_t)((p0 ^ (p0 >> 16) ^ p1 ^ (p1 >> 16) ^ p2) & 0x1F);
@@ -479,8 +512,69 @@ void PlantEngine::getSeedCode(char* outCode20) const {
     }
     raw16[16] = '\0';
 
-    snprintf(outCode20, 20, "%.4s-%.4s-%.4s-%.4s", 
+    snprintf(outCode20, 20, "%.4s-%.4s-%.4s-%.4s",
              &raw16[0], &raw16[4], &raw16[8], &raw16[12]);
+}
+
+void PlantEngine::getSeedCode(char* outCode20) const {
+    encodeSeedCode(_genome, outCode20);
+}
+
+bool PlantEngine::composeHybridSeedCode(const ForeignParent& foreign, char* outCode20, PlantGenome* outGenome) const {
+    if (!outCode20) return false;
+
+    uint8_t foreignPhenotype = foreign.phenotype & 0x03;
+    uint8_t foreignPalette = foreign.petalPalette;
+    if (foreignPalette > 4) foreignPalette = nearestPetalPalette(foreign.petalColor);
+    uint8_t foreignStem = foreign.stemHue & 0x03;
+
+    uint32_t mix = _genome.seed ^ (foreign.seed * 0x45D9F3Bu);
+    mix ^= ((uint32_t)foreign.petalColor << 16) ^ getPetalColor();
+    mix ^= ((uint32_t)_genome.phenotype << 28) ^ ((uint32_t)foreignPhenotype << 24);
+    mix ^= ((uint32_t)_genome.petalPalette << 12) ^ ((uint32_t)foreignPalette << 8);
+    mix ^= ((uint32_t)_genome.stemHue << 4) ^ foreignStem;
+    mix *= 0x9E3779B1u;
+    if (mix == 0 || mix == _genome.seed) mix ^= 0xA5C35A17u;
+
+    PlantGenome child = _genome;
+    child.seed = mix;
+
+    if (_genome.phenotype != foreignPhenotype) {
+        uint8_t folded = (uint8_t)((_genome.phenotype ^ foreignPhenotype) & 0x03);
+        if (mix & 0x10u) child.phenotype = folded;
+        else child.phenotype = (mix & 0x01u) ? foreignPhenotype : _genome.phenotype;
+    }
+
+    uint8_t blended = (uint8_t)((_genome.petalPalette + foreignPalette) / 2);
+    if (_genome.petalPalette != foreignPalette && blended == _genome.petalPalette) {
+        blended = foreignPalette;
+    }
+    uint8_t fromColor = nearestPetalPalette(foreign.petalColor);
+    if (fromColor != blended && (mix & 0x20u)) blended = fromColor;
+    child.petalPalette = clampByte(blended, 0, 4);
+
+    child.stemHue = (uint8_t)((_genome.stemHue + foreignStem) & 0x03);
+
+    int density = ((int)_genome.foliageDensity + (int)(40 + (mix & 0x1Fu))) / 2;
+    child.foliageDensity = clampByte(density, 40, 100);
+    child.leafShape = (uint8_t)(((_genome.leafShape + (mix >> 6)) ) % 3);
+    if (child.maxDepth < 3) child.maxDepth = 3;
+    if (child.maxDepth > 5) child.maxDepth = 4;
+    if (child.baseLength < 32) child.baseLength = 42;
+    if (child.baseLength > 80) child.baseLength = 56;
+    if (child.branchAngle < 12) child.branchAngle = 18;
+    if (child.branchAngle > 48) child.branchAngle = 32;
+    if (child.lengthDecayPct < 60) child.lengthDecayPct = 68;
+    if (child.lengthDecayPct > 80) child.lengthDecayPct = 76;
+    if (child.swayFlexibility < 1) child.swayFlexibility = 2;
+    if (child.swayFlexibility > 5) child.swayFlexibility = 4;
+    if (child.petalCount < 3 || child.petalCount > 8) {
+        child.petalCount = (child.phenotype == PHENOTYPE_ORCHID) ? 5 : 4;
+    }
+
+    encodeSeedCode(child, outCode20);
+    if (outGenome) *outGenome = child;
+    return true;
 }
 
 bool PlantEngine::loadSeedCode(const char* inCode) {
