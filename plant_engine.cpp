@@ -54,6 +54,126 @@ static uint16_t blendMintCyan(uint16_t base, uint8_t amount) {
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
+static uint16_t blendRgb565(uint16_t base, uint16_t tint, uint8_t amount) {
+    if (amount == 0) return base;
+
+    int16_t r = (base >> 11) & 0x1F;
+    int16_t g = (base >> 5) & 0x3F;
+    int16_t b = base & 0x1F;
+    int16_t tr = (tint >> 11) & 0x1F;
+    int16_t tg = (tint >> 5) & 0x3F;
+    int16_t tb = tint & 0x1F;
+
+    r += ((tr - r) * amount) / 255;
+    g += ((tg - g) * amount) / 255;
+    b += ((tb - b) * amount) / 255;
+    if (r < 0) r = 0;
+    if (g < 0) g = 0;
+    if (b < 0) b = 0;
+    if (r > 31) r = 31;
+    if (g > 63) g = 63;
+    if (b > 31) b = 31;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+void PlantEngine::cacheSeason(uint8_t month, uint8_t day) {
+    _seasonKnown = seasonFromMonth(month, _season);
+    _seasonDepth = _seasonKnown ? seasonProgress(month, day) : 0;
+}
+
+uint16_t PlantEngine::seasonalStemColor(const PlantSegment& seg) const {
+    if (!_seasonKnown) return seg.stemColor;
+    switch (_season) {
+        case SEASON_AUTUMN:
+            return blendRgb565(seg.stemColor, rgb565(120, 62, 28), (uint8_t)(70 + _seasonDepth / 5));
+        case SEASON_WINTER:
+            return blendRgb565(seg.stemColor, rgb565(86, 104, 112), 90);
+        case SEASON_SPRING:
+            if (seg.depth >= 2) return rgb565(132, 220, 48);
+            return blendRgb565(seg.stemColor, rgb565(70, 170, 55), 100);
+        case SEASON_SUMMER:
+            return (seg.depth <= 1) ? rgb565(8, 78, 42) : rgb565(14, 128, 64);
+    }
+    return seg.stemColor;
+}
+
+uint16_t PlantEngine::seasonalLeafColor(const PlantSegment& seg, uint8_t index) const {
+    if (!_seasonKnown) return seg.leafColor;
+    switch (_season) {
+        case SEASON_AUTUMN: {
+            uint16_t warm = (index % 3 == 0) ? rgb565(176, 72, 28) :
+                            (index % 3 == 1) ? rgb565(204, 146, 36) :
+                                               rgb565(168, 24, 42);
+            return blendRgb565(seg.leafColor, warm, (uint8_t)(160 + (_seasonDepth / 3)));
+        }
+        case SEASON_WINTER:
+            return blendRgb565(seg.leafColor, rgb565(176, 196, 198), 150);
+        case SEASON_SPRING:
+            if (seg.depth >= 2) return rgb565(186, 255, 64);
+            return blendRgb565(seg.leafColor, rgb565(140, 230, 70), 180);
+        case SEASON_SUMMER:
+            return (seg.depth <= 1) ? rgb565(0, 120, 58) : rgb565(12, 176, 82);
+    }
+    return seg.leafColor;
+}
+
+uint16_t PlantEngine::seasonalVeinColor(const PlantSegment& seg) const {
+    if (!_seasonKnown) return seg.leafVeinColor;
+    switch (_season) {
+        case SEASON_AUTUMN:
+            return blendRgb565(seg.leafVeinColor, rgb565(236, 176, 64), (uint8_t)(120 + _seasonDepth / 4));
+        case SEASON_WINTER:
+            return rgb565(214, 232, 240);
+        case SEASON_SPRING:
+            return (seg.depth >= 2) ? rgb565(230, 255, 140) : rgb565(190, 245, 110);
+        case SEASON_SUMMER:
+            return rgb565(150, 235, 90);
+    }
+    return seg.leafVeinColor;
+}
+
+void PlantEngine::applySeasonalBloom(uint8_t flowerIndex, uint8_t& faceAngle) {
+    faceAngle = 192;
+    if (!_seasonKnown || flowerIndex >= _flowerCount) return;
+    if (_flowers[flowerIndex].stage == BLOOM_SEED_POD) return;
+
+    switch (_season) {
+        case SEASON_WINTER:
+            if ((flowerIndex & 1) == 0) {
+                _flowerStyle.petalColor = rgb565(236, 244, 250);
+                _flowerStyle.petalHighlight = rgb565(186, 214, 230);
+                _flowerStyle.centerColor = rgb565(168, 206, 120);
+                _flowerStyle.petalCount = 6;
+                _flowerStyle.petalLength = 7;
+                faceAngle = 64;
+            } else {
+                _flowerStyle.petalColor = rgb565(196, 22, 40);
+                _flowerStyle.petalHighlight = rgb565(255, 92, 64);
+                _flowerStyle.centerColor = rgb565(255, 196, 48);
+                _flowerStyle.petalCount = 6;
+                _flowerStyle.petalLength = 9;
+                faceAngle = 192;
+            }
+            break;
+        case SEASON_SPRING:
+            _flowerStyle.petalColor = rgb565(255, 170, 196);
+            _flowerStyle.petalHighlight = rgb565(255, 228, 238);
+            _flowerStyle.centerColor = rgb565(255, 214, 72);
+            break;
+        case SEASON_SUMMER:
+            _flowerStyle.petalColor = rgb565(255, 168, 20);
+            _flowerStyle.petalHighlight = rgb565(255, 236, 110);
+            _flowerStyle.centerColor = rgb565(255, 60, 130);
+            if (_flowerStyle.petalLength < 8) _flowerStyle.petalLength = 8;
+            break;
+        case SEASON_AUTUMN:
+            _flowerStyle.petalColor = blendRgb565(_flowerStyle.petalColor, rgb565(186, 54, 28),
+                                                  (uint8_t)(90 + _seasonDepth / 4));
+            _flowerStyle.petalHighlight = blendRgb565(_flowerStyle.petalHighlight, rgb565(220, 140, 40), 100);
+            break;
+    }
+}
+
 // Crockford's Base32 Alphabet (No ambiguous 0/O, 1/I/L)
 static const char BASE32_ALPHABET[] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -79,6 +199,10 @@ PlantEngine::PlantEngine()
       _curWindOffset(0),
       _phosphoElapsedMs(0),
       _phosphoBlend(0),
+      _seasonKnown(false),
+      _season(SEASON_SUMMER),
+      _seasonDepth(0),
+      _frostSparkle(0),
       _prngState(123456789) {
     clearSoilSeedPods();
 }
@@ -93,6 +217,10 @@ void PlantEngine::begin() {
     _curWindOffset = 0;
     _phosphoElapsedMs = 0;
     _phosphoBlend = 0;
+    _seasonKnown = false;
+    _season = SEASON_SUMMER;
+    _seasonDepth = 0;
+    _frostSparkle = 0;
 
     // Default botanical specimen genome (Highland Orchid)
     PlantGenome defaultGenome;
@@ -411,7 +539,11 @@ void PlantEngine::setGrowthProgress(float progress) {
     _targetGrowth = progress;
 }
 
-void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour, uint8_t minute) {
+void PlantEngine::updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour, uint8_t minute,
+                                  uint8_t month, uint8_t day) {
+    cacheSeason(month, day);
+    _frostSparkle++;
+
     // 1. Target growth interpolation
     if (_growthProgress < _targetGrowth) {
         _growthProgress += (deltaMs * 0.0002f);
@@ -714,7 +846,7 @@ void PlantEngine::drawThickLine(uint16_t* buffer, int16_t x0, int16_t y0,
 
 void PlantEngine::drawLeaf(uint16_t* buffer, int16_t x, int16_t y, uint8_t angle, 
                           uint8_t length, uint8_t width, uint16_t leafColor, uint16_t veinColor,
-                          int16_t bufWidth, int16_t bufHeight) {
+                          int16_t bufWidth, int16_t bufHeight, uint16_t rimColor, bool crystalTip) {
     if (!buffer || length <= 1) return;
 
     int16_t tipDx = (lutCos(angle) * (int16_t)length) / 127;
@@ -741,8 +873,22 @@ void PlantEngine::drawLeaf(uint16_t* buffer, int16_t x, int16_t y, uint8_t angle
     drawThickLine(buffer, rightX, rightY, tipX, tipY, 1, leafColor, bufWidth, bufHeight);
     drawThickLine(buffer, leftX, leftY, rightX, rightY, 2, leafColor, bufWidth, bufHeight);
 
+    if (rimColor != 0) {
+        drawThickLine(buffer, x, y, leftX, leftY, 1, rimColor, bufWidth, bufHeight);
+        drawThickLine(buffer, leftX, leftY, tipX, tipY, 1, rimColor, bufWidth, bufHeight);
+        drawThickLine(buffer, x, y, rightX, rightY, 1, rimColor, bufWidth, bufHeight);
+        drawThickLine(buffer, rightX, rightY, tipX, tipY, 1, rimColor, bufWidth, bufHeight);
+    }
+
     // Center vein
     drawThickLine(buffer, x, y, tipX, tipY, 1, veinColor, bufWidth, bufHeight);
+
+    if (crystalTip) {
+        int16_t cx = tipX + (tipDx > 0 ? 1 : (tipDx < 0 ? -1 : 0));
+        int16_t cy = tipY + (tipDy > 0 ? 1 : (tipDy < 0 ? -1 : 0));
+        putSoilPixel(buffer, bufWidth, bufHeight, tipX, tipY, rgb565(244, 252, 255));
+        putSoilPixel(buffer, bufWidth, bufHeight, cx, cy, rgb565(170, 220, 245));
+    }
 }
 
 void PlantEngine::drawFlower(uint16_t* buffer, int16_t x, int16_t y, uint8_t angle,
@@ -817,8 +963,20 @@ void PlantEngine::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHe
         const PlantSegment& seg = _segments[i];
         if (!seg.active) continue;
 
+        uint16_t stemColor = seasonalStemColor(seg);
+        if (_seasonKnown && _season == SEASON_WINTER) {
+            int16_t rim = (seg.thickness >= 2) ? (int16_t)((seg.thickness / 2) + 1) : 1;
+            uint16_t ice = rgb565(214, 236, 248);
+            uint16_t iceShade = rgb565(140, 176, 196);
+            drawThickLine(buffer, (int16_t)(seg.curX0 + rim), seg.curY0,
+                          (int16_t)(seg.curX1 + rim), seg.curY1,
+                          1, ice, screenWidth, screenHeight);
+            drawThickLine(buffer, (int16_t)(seg.curX0 - rim), seg.curY0,
+                          (int16_t)(seg.curX1 - rim), seg.curY1,
+                          1, iceShade, screenWidth, screenHeight);
+        }
         drawThickLine(buffer, seg.curX0, seg.curY0, seg.curX1, seg.curY1, 
-                      seg.thickness, seg.stemColor, screenWidth, screenHeight);
+                      seg.thickness, stemColor, screenWidth, screenHeight);
     }
 
     // 2. Render Foliage & Leaves (Only at active leaf nodes)
@@ -830,13 +988,20 @@ void PlantEngine::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHe
         uint8_t curLeafWid = (uint8_t)(seg.leafWidth * _growthProgress);
 
         if (curLeafLen >= 2) {
-            uint16_t veinColor = seg.leafVeinColor;
+            uint16_t leafColor = seasonalLeafColor(seg, i);
+            uint16_t veinColor = seasonalVeinColor(seg);
             if (_phosphoBlend > 0) {
                 veinColor = blendMintCyan(veinColor, _phosphoBlend);
             }
+            uint16_t rim = 0;
+            bool crystal = false;
+            if (_seasonKnown && _season == SEASON_WINTER) {
+                rim = rgb565(210, 236, 248);
+                crystal = (((uint8_t)((i * 3) + (_frostSparkle >> 2)) & 7) == 0);
+            }
             drawLeaf(buffer, seg.curX1, seg.curY1, seg.leafAngle, 
-                     curLeafLen, curLeafWid, seg.leafColor, veinColor,
-                     screenWidth, screenHeight);
+                     curLeafLen, curLeafWid, leafColor, veinColor,
+                     screenWidth, screenHeight, rim, crystal);
         }
     }
 
@@ -845,8 +1010,12 @@ void PlantEngine::render(uint16_t* buffer, int16_t screenWidth, int16_t screenHe
         const FlowerInstance& flower = _flowers[i];
         if (flower.stage == BLOOM_VEGETATIVE) continue;
 
-        drawFlower(buffer, flower.x, flower.y, 192 /* upright face to sky */, 
+        FlowerAttributes savedStyle = _flowerStyle;
+        uint8_t faceAngle = 192;
+        applySeasonalBloom(i, faceAngle);
+        drawFlower(buffer, flower.x, flower.y, faceAngle,
                    flower.diurnalOpenRatio, flower.stage, screenWidth, screenHeight);
+        _flowerStyle = savedStyle;
     }
 }
 

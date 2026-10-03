@@ -128,6 +128,88 @@ static void releaseSeedMote(Particle& p, bool carrySparkle) {
     p.active = true;
 }
 
+static void activateOxygenMote(Particle& p) {
+    LeafNodePos leaves[16];
+    uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
+    if (leafCount > 0 && (rand() % 100 < 80)) {
+        uint8_t lIdx = (uint8_t)(rand() % leafCount);
+        p.x = leaves[lIdx].x << 4;
+        p.y = leaves[lIdx].y << 4;
+    } else {
+        p.x = (int16_t)((rand() % (SCREEN_WIDTH - 30) + 15) << 4);
+        p.y = (int16_t)((SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4);
+    }
+    p.vx = (int16_t)(rand() % 9 - 4);
+    p.vy = (int16_t)(-(rand() % 16 + 16));
+    p.life = (uint16_t)(rand() % 40 + 40);
+    p.maxLife = p.life;
+    p.type = PARTICLE_OXYGEN_MOTE;
+    p.size = (rand() % 2 == 0) ? 1 : 2;
+    p.phase = (uint8_t)(rand() % 32);
+    p.tag = 0;
+    p.active = true;
+}
+
+static void activateFallingLeaf(Particle& p) {
+    LeafNodePos leaves[16];
+    uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
+    if (leafCount > 0 && (rand() % 100) < 75) {
+        uint8_t idx = (uint8_t)(rand() % leafCount);
+        p.x = leaves[idx].x << 4;
+        p.y = leaves[idx].y << 4;
+    } else {
+        p.x = (int16_t)((rand() % (SCREEN_WIDTH - 16) + 8) << 4);
+        p.y = (int16_t)((HUD_HEIGHT + 4 + (rand() % 36)) << 4);
+    }
+    p.vx = (int16_t)(rand() % 5 - 2);
+    p.vy = (int16_t)(7 + (rand() % 5));
+    p.life = (uint16_t)(380 + (rand() % 140));
+    p.maxLife = p.life;
+    p.type = PARTICLE_FALLING_LEAF;
+    p.size = (uint8_t)(2 + (rand() % 2));
+    p.phase = (uint8_t)(rand() % 32);
+    p.tag = (uint8_t)(rand() % 3);
+    p.active = true;
+}
+
+static void activateBlossomPetal(Particle& p) {
+    FlowerNodePos flowers[MAX_FLOWER_NODES];
+    uint8_t flowerCount = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
+    if (flowerCount > 0 && (rand() % 100) < 40) {
+        uint8_t idx = (uint8_t)(rand() % flowerCount);
+        p.x = flowers[idx].x << 4;
+        p.y = (int16_t)((flowers[idx].y + 2) << 4);
+    } else {
+        p.x = (int16_t)((rand() % (SCREEN_WIDTH - 10) + 5) << 4);
+        p.y = (int16_t)((HUD_HEIGHT + 1) << 4);
+    }
+    p.vx = (int16_t)(rand() % 5 - 2);
+    p.vy = (int16_t)(8 + (rand() % 5));
+    p.life = (uint16_t)(460 + (rand() % 160));
+    p.maxLife = p.life;
+    p.type = PARTICLE_BLOSSOM_PETAL;
+    p.size = 2;
+    p.phase = (uint8_t)(rand() % 32);
+    p.tag = (uint8_t)(rand() % 2);
+    p.active = true;
+}
+
+static int16_t gustDrift(uint8_t phase, uint8_t salt) {
+    int16_t wind = Plant.getWindSway();
+    int16_t drift = (int16_t)(wind >> 5);
+    if (wind > 90 || wind < -90) {
+        drift = (int16_t)(drift + (wind >> 4));
+    }
+    drift = (int16_t)(drift + (fastSin((uint8_t)(phase + salt)) >> 3));
+    return drift;
+}
+
+static void plotParticle(uint16_t* buffer, int16_t width, int16_t height,
+                         int16_t x, int16_t y, uint16_t color) {
+    if (!buffer || x < 0 || y < 0 || x >= width || y >= height) return;
+    buffer[(y * width) + x] = color;
+}
+
 static void activateSnowflake(Particle& p) {
     p.x = (int16_t)((rand() % (SCREEN_WIDTH - 8) + 4) << 4);
     p.y = (int16_t)((HUD_HEIGHT + 2) << 4);
@@ -145,6 +227,9 @@ ParticleSystem::ParticleSystem()
     : _lastSpawnTime(0),
       _lastSporeSpawn(0),
       _lastPollination(0),
+      _lastLeafSpawn(0),
+      _lastPetalSpawn(0),
+      _lastBubbleSpawn(0),
       _globalPhase(0) {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
@@ -160,6 +245,9 @@ void ParticleSystem::begin() {
     _lastSpawnTime = millis();
     _lastSporeSpawn = millis();
     _lastPollination = millis();
+    _lastLeafSpawn = millis();
+    _lastPetalSpawn = millis();
+    _lastBubbleSpawn = millis();
     _globalPhase = 0;
 }
 
@@ -220,45 +308,11 @@ static void spawnFairWeather(Particle& p, TimePhase phase) {
         }
 
         // Fallback: Daytime photosynthetic oxygen bubble rising from foliage
-        LeafNodePos leaves[16];
-        uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
-        if (leafCount > 0 && (rand() % 100 < 80)) {
-            uint8_t lIdx = rand() % leafCount;
-            p.x = leaves[lIdx].x << 4;
-            p.y = leaves[lIdx].y << 4;
-        } else {
-            p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
-            p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
-        }
-        p.vx = (rand() % 9 - 4);
-        p.vy = -(rand() % 16 + 16); // steady, lively float upward
-        p.life = rand() % 40 + 40;
-        p.maxLife = p.life;
-        p.type = PARTICLE_OXYGEN_MOTE;
-        p.size = (rand() % 2 == 0) ? 1 : 2;
-        p.phase = rand() % 32;
-        p.active = true;
+        activateOxygenMote(p);
     }
     else {
         // Daytime / Dawn / Golden Hour: Photosynthetic oxygen bubble rising from foliage
-        LeafNodePos leaves[16];
-        uint8_t leafCount = Plant.getActiveLeafNodes(leaves, 16);
-        if (leafCount > 0 && (rand() % 100 < 80)) {
-            uint8_t lIdx = rand() % leafCount;
-            p.x = leaves[lIdx].x << 4;
-            p.y = leaves[lIdx].y << 4;
-        } else {
-            p.x = (rand() % (SCREEN_WIDTH - 30) + 15) << 4;
-            p.y = (SCREEN_HEIGHT - SUBSTRATE_HEIGHT - 5 - (rand() % 30)) << 4;
-        }
-        p.vx = (rand() % 9 - 4);
-        p.vy = -(rand() % 16 + 16); // steady, lively float upward
-        p.life = rand() % 40 + 40;
-        p.maxLife = p.life;
-        p.type = PARTICLE_OXYGEN_MOTE;
-        p.size = (rand() % 2 == 0) ? 1 : 2;
-        p.phase = rand() % 32;
-        p.active = true;
+        activateOxygenMote(p);
     }
 }
 
@@ -319,9 +373,42 @@ void ParticleSystem::triggerWateringCascade(uint8_t count) {
     }
 }
 
+void ParticleSystem::spawnSeasonal(uint32_t now, TimePhase phase, WeatherType weather,
+                                   uint8_t humidityPct, uint8_t month, uint8_t day) {
+    Season season = SEASON_SUMMER;
+    if (!seasonFromMonth(month, season)) return;
+    if (getActiveCount() >= 24) return;
+
+    uint8_t progress = seasonProgress(month, day);
+    bool precipAtmosphere = (weather == WEATHER_RAIN || weather == WEATHER_SNOW || weather == WEATHER_FOG);
+    bool condensing = humidityPct >= HIGH_HUMIDITY_FOG_PCT;
+
+    // Early in the season the effect is lighter; it thickens toward the last month.
+    if (season == SEASON_AUTUMN && (now - _lastLeafSpawn) >= (uint32_t)(640u - progress)) {
+        int8_t slot = findFreeSlot();
+        if (slot >= 0) activateFallingLeaf(_pool[slot]);
+        _lastLeafSpawn = now;
+    }
+
+    if (season == SEASON_SPRING && (now - _lastPetalSpawn) >= (uint32_t)(520u - progress)) {
+        int8_t slot = findFreeSlot();
+        if (slot >= 0) activateBlossomPetal(_pool[slot]);
+        _lastPetalSpawn = now;
+    }
+
+    bool photosynthetic = (phase == PHASE_DAWN || phase == PHASE_DAYLIGHT || phase == PHASE_GOLDEN_HOUR);
+    uint32_t bubbleInterval = (uint32_t)(400u - (progress / 2u));
+    if (season == SEASON_SUMMER && photosynthetic && !precipAtmosphere && !condensing &&
+        (now - _lastBubbleSpawn) >= bubbleInterval) {
+        int8_t slot = findFreeSlot();
+        if (slot >= 0) activateOxygenMote(_pool[slot]);
+        _lastBubbleSpawn = now;
+    }
+}
+
 void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weather,
                             uint8_t humidityPct, uint8_t precipIntensity,
-                            uint8_t hour, uint8_t minute) {
+                            uint8_t hour, uint8_t minute, uint8_t month, uint8_t day) {
     _globalPhase++;
     uint32_t now = millis();
 
@@ -362,6 +449,10 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
         }
         _lastSporeSpawn = now;
     }
+
+    // Seasonal motes only take a free pool slot, and they yield once the pool is half full
+    // so rain, snow, fog, watering, pollen, and spores keep a path in.
+    spawnSeasonal(now, phase, weather, humidityPct, month, day);
 
     // Update active particles
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
@@ -411,10 +502,14 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             int16_t driftX = fastSin((uint8_t)(p.phase + (i * 5))) >> 3;
             p.x += (p.vx + driftX);
             p.y += p.vy;
+        } else if (p.type == PARTICLE_FALLING_LEAF || p.type == PARTICLE_BLOSSOM_PETAL) {
+            int16_t drift = gustDrift(p.phase, (uint8_t)(i * 5));
+            p.x += (int16_t)(p.vx + drift);
+            p.y += (int16_t)(p.vy + (fastSin((uint8_t)(p.phase + 8)) >> 6));
         } else if (p.type == PARTICLE_MIST_DROP) {
             // Glass droplets cling, then run downward. Falling rain mist is already faster.
             if (p.vy < 10) {
-                uint8_t lived = (uint8_t)(p.maxLife - p.life);
+                uint16_t lived = (uint16_t)(p.maxLife - p.life);
                 if (lived > (p.maxLife / 3) && (p.phase & 3) == 0 && p.vy < 18) {
                     p.vy = (int16_t)(p.vy + 1);
                 }
@@ -452,7 +547,7 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
 void ParticleSystem::tryCrossPollinate(Particle& mote, uint32_t now) {
     if (mote.type != PARTICLE_POLLEN_MOTE) return;
 
-    uint8_t lived = (uint8_t)(mote.maxLife - mote.life);
+    uint16_t lived = (uint16_t)(mote.maxLife - mote.life);
     if (lived < POLLEN_GRACE_FRAMES) return;
     if ((uint32_t)(now - _lastPollination) < POLLINATION_COOLDOWN_MS) return;
 
@@ -515,7 +610,7 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
         else if (p.type == PARTICLE_SEED_MOTE) {
             uint16_t color = rgb565(175, 125, 45);
             buffer[py * screenWidth + px] = color;
-            uint8_t lived = (uint8_t)(p.maxLife - p.life);
+            uint16_t lived = (uint16_t)(p.maxLife - p.life);
             if (p.size >= 2 && lived < 12) {
                 uint16_t spark = rgb565(255, 220, 80);
                 if (py > 0) buffer[(py - 1) * screenWidth + px] = spark;
@@ -569,7 +664,7 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
             }
         }
         else if (p.type == PARTICLE_NOCTURNAL_SPORE) {
-            uint8_t age = (uint8_t)(p.maxLife - p.life);
+            uint16_t age = (uint16_t)(p.maxLife - p.life);
             bool burst = (age % 96) < 12;
             uint16_t color = burst ? rgb565(186, 255, 236) : rgb565(36, 128, 118);
             buffer[py * screenWidth + px] = color;
@@ -597,6 +692,39 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
                 if (py > 0 && px + 1 < screenWidth) buffer[(py - 1) * screenWidth + (px + 1)] = spark;
                 if (py + 1 < screenHeight && px > 0) buffer[(py + 1) * screenWidth + (px - 1)] = spark;
                 if (py + 1 < screenHeight && px + 1 < screenWidth) buffer[(py + 1) * screenWidth + (px + 1)] = spark;
+            }
+        }
+        else if (p.type == PARTICLE_FALLING_LEAF) {
+            uint16_t body = rgb565(176, 72, 28);
+            uint16_t shade = rgb565(120, 42, 16);
+            if (p.tag == 1) {
+                body = rgb565(204, 148, 40);
+                shade = rgb565(150, 96, 24);
+            } else if (p.tag >= 2) {
+                body = rgb565(168, 28, 44);
+                shade = rgb565(110, 16, 28);
+            }
+            plotParticle(buffer, screenWidth, screenHeight, px, py, body);
+            if ((p.phase & 8) != 0) {
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px - 1), py, body);
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px + 1), py, body);
+                plotParticle(buffer, screenWidth, screenHeight, px, (int16_t)(py - 1), shade);
+            } else {
+                plotParticle(buffer, screenWidth, screenHeight, px, (int16_t)(py - 1), body);
+                plotParticle(buffer, screenWidth, screenHeight, px, (int16_t)(py + 1), shade);
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px + 1), py, shade);
+            }
+        }
+        else if (p.type == PARTICLE_BLOSSOM_PETAL) {
+            uint16_t body = (p.tag & 1) ? rgb565(255, 236, 242) : rgb565(255, 168, 196);
+            uint16_t shade = rgb565(226, 120, 156);
+            plotParticle(buffer, screenWidth, screenHeight, px, py, body);
+            if ((p.phase & 16) != 0) {
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px + 1), py, body);
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px + 1), (int16_t)(py + 1), shade);
+            } else {
+                plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px - 1), (int16_t)(py + 1), body);
+                plotParticle(buffer, screenWidth, screenHeight, px, (int16_t)(py + 1), shade);
             }
         }
     }

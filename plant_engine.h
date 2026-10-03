@@ -129,7 +129,9 @@ public:
     // Lifecycle, Growth & Diurnal Blooming Animation
     void setGrowthProgress(float progress);
     float getGrowthProgress() const { return _growthProgress; }
-    void updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour = 12, uint8_t minute = 0);
+    // month 0 leaves the genome palette unchanged (SNTP date not validated yet).
+    void updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour = 12, uint8_t minute = 0,
+                         uint8_t month = 0, uint8_t day = 1);
 
     // Physics & Wind Sway
     void updatePhysics(uint32_t deltaMs, float windStrength = 1.0f);
@@ -185,6 +187,10 @@ private:
     int16_t _curWindOffset;
     uint32_t _phosphoElapsedMs; // 0.1 Hz vein/petal pulse, wraps every 10s
     uint8_t _phosphoBlend;      // 0 outside 23:00–05:00, else mint/cyan mix amount
+    bool _seasonKnown;
+    Season _season;
+    uint8_t _seasonDepth;       // 0 early in the season, 255 at the end
+    uint8_t _frostSparkle;
 
     // Fast Pseudo-Random Generator for deterministic genome execution
     uint32_t _prngState;
@@ -198,6 +204,11 @@ private:
     void generateRoots();
     void configureFlowerStyle();
     void clearSoilSeedPods();
+    void cacheSeason(uint8_t month, uint8_t day);
+    void applySeasonalBloom(uint8_t flowerIndex, uint8_t& faceAngle);
+    uint16_t seasonalStemColor(const PlantSegment& seg) const;
+    uint16_t seasonalLeafColor(const PlantSegment& seg, uint8_t index) const;
+    uint16_t seasonalVeinColor(const PlantSegment& seg) const;
 
     // Drawing primitives
     void drawThickLine(uint16_t* buffer, int16_t x0, int16_t y0, 
@@ -206,7 +217,7 @@ private:
     
     void drawLeaf(uint16_t* buffer, int16_t x, int16_t y, uint8_t angle, 
                   uint8_t length, uint8_t width, uint16_t leafColor, uint16_t veinColor,
-                  int16_t bufWidth, int16_t bufHeight);
+                  int16_t bufWidth, int16_t bufHeight, uint16_t rimColor = 0, bool crystalTip = false);
 
     void drawFlower(uint16_t* buffer, int16_t x, int16_t y, uint8_t angle,
                     float openRatio, uint8_t stage, int16_t bufWidth, int16_t bufHeight);

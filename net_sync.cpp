@@ -508,6 +508,9 @@ void NetSyncManager::update(uint32_t deltaMs) {
         _timeSynced = true;
         // Update HUD with live local wall clock
         HUD.setTime(timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec, false);
+        HUD.setCalendar((uint16_t)(timeinfo.tm_year + 1900),
+                        (uint8_t)(timeinfo.tm_mon + 1),
+                        (uint8_t)timeinfo.tm_mday);
     }
 
     // Update HUD with live weather if synced

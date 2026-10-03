@@ -3,10 +3,24 @@
 
 HudManager HUD;
 
+static uint8_t daysInMonth(uint16_t year, uint8_t month) {
+    static const uint8_t days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month < 1 || month > 12) return 30;
+    uint8_t count = days[month - 1];
+    if (month == 2) {
+        bool leap = ((year % 4u) == 0u) && (((year % 100u) != 0u) || ((year % 400u) == 0u));
+        if (leap) count = 29;
+    }
+    return count;
+}
+
 HudManager::HudManager()
     : _hour(10),
       _minute(42),
       _second(0),
+      _year(0),
+      _month(0),
+      _day(1),
       _subSecondMs(0),
       _is24Hour(false),
       _isPM(false),
@@ -31,7 +45,11 @@ void HudManager::tickInternalClock(uint32_t deltaMs) {
             _minute++;
             if (_minute >= 60) {
                 _minute = 0;
+                uint8_t prevHour = _hour;
                 _hour = (_hour + 1) % 24;
+                if (prevHour == 23 && _hour == 0) {
+                    advanceCalendarDay();
+                }
             }
         }
     }
@@ -53,6 +71,30 @@ void HudManager::setTime(uint8_t hour, uint8_t min, uint8_t sec, bool is24h) {
     _second = sec % 60;
     _is24Hour = is24h;
     _isPM = (_hour >= 12);
+}
+
+void HudManager::setCalendar(uint16_t year, uint8_t month, uint8_t day) {
+    if (month < 1 || month > 12) return;
+    _year = year;
+    _month = month;
+    _day = day;
+    if (_day < 1) _day = 1;
+    uint8_t dim = daysInMonth(_year, _month);
+    if (_day > dim) _day = dim;
+}
+
+void HudManager::advanceCalendarDay() {
+    if (_month < 1 || _month > 12) return;
+    _day++;
+    uint8_t dim = daysInMonth(_year, _month);
+    if (_day > dim) {
+        _day = 1;
+        _month++;
+        if (_month > 12) {
+            _month = 1;
+            if (_year > 0) _year++;
+        }
+    }
 }
 
 void HudManager::setWeather(WeatherType type, int16_t tempF, uint8_t humidityPct, uint8_t precipIntensity) {

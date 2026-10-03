@@ -19,6 +19,52 @@ inline bool isPhosphorescentHour(uint8_t hour, uint8_t minute) {
     return mins >= (23u * 60u) || mins < (5u * 60u);
 }
 
+// Northern-hemisphere meteorological seasons. Month is 1–12 from the SNTP local calendar.
+enum Season : uint8_t {
+    SEASON_SPRING = 0,   // March–May
+    SEASON_SUMMER,       // June–August
+    SEASON_AUTUMN,       // September–November
+    SEASON_WINTER        // December–February
+};
+
+// False when month is 0 (the wall clock has not been validated yet).
+inline bool seasonFromMonth(uint8_t month, Season& season) {
+    if (month >= 3 && month <= 5) {
+        season = SEASON_SPRING;
+        return true;
+    }
+    if (month >= 6 && month <= 8) {
+        season = SEASON_SUMMER;
+        return true;
+    }
+    if (month >= 9 && month <= 11) {
+        season = SEASON_AUTUMN;
+        return true;
+    }
+    if (month == 12 || month == 1 || month == 2) {
+        season = SEASON_WINTER;
+        return true;
+    }
+    return false;
+}
+
+// 0 on the first day of the season, 255 on the last. Unknown months stay at 0.
+inline uint8_t seasonProgress(uint8_t month, uint8_t day) {
+    uint8_t index = 0;
+    if (month == 12) index = 0;
+    else if (month == 1 || month == 2) index = month;
+    else if (month >= 3 && month <= 5) index = (uint8_t)(month - 3);
+    else if (month >= 6 && month <= 8) index = (uint8_t)(month - 6);
+    else if (month >= 9 && month <= 11) index = (uint8_t)(month - 9);
+    else return 0;
+
+    if (day < 1) day = 1;
+    if (day > 31) day = 31;
+    uint16_t span = (uint16_t)index * 85u + ((uint16_t)(day - 1) * 85u) / 30u;
+    if (span > 255u) span = 255u;
+    return (uint8_t)span;
+}
+
 struct AtmospherePalette {
     uint8_t skyTopR, skyTopG, skyTopB;
     uint8_t skyBottomR, skyBottomG, skyBottomB;
