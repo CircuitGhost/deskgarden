@@ -230,6 +230,9 @@ ParticleSystem::ParticleSystem()
       _lastLeafSpawn(0),
       _lastPetalSpawn(0),
       _lastBubbleSpawn(0),
+      _lastLadybugSpawn(0),
+      _lastVisitorSpawn(0),
+      _lastSnailSpawn(0),
       _globalPhase(0) {
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
         _pool[i].active = false;
@@ -248,6 +251,9 @@ void ParticleSystem::begin() {
     _lastLeafSpawn = millis();
     _lastPetalSpawn = millis();
     _lastBubbleSpawn = millis();
+    _lastLadybugSpawn = 0;
+    _lastVisitorSpawn = 0;
+    _lastSnailSpawn = 0;
     _globalPhase = 0;
 }
 
@@ -373,6 +379,309 @@ void ParticleSystem::triggerWateringCascade(uint8_t count) {
     }
 }
 
+static int8_t firstChildSegment(uint8_t parent) {
+    uint8_t count = Plant.getSegmentCount();
+    for (uint8_t i = 0; i < count; i++) {
+        SegmentPose pose;
+        if (!Plant.getSegmentPose(i, pose)) continue;
+        if (pose.parentIndex == (int8_t)parent) return (int8_t)i;
+    }
+    return -1;
+}
+
+static void stepToward(Particle& p, int16_t tx, int16_t ty, int16_t step) {
+    int16_t dx = (int16_t)(tx - p.x);
+    int16_t dy = (int16_t)(ty - p.y);
+    if (dx > step) p.x = (int16_t)(p.x + step);
+    else if (dx < -step) p.x = (int16_t)(p.x - step);
+    else p.x = tx;
+    if (dy > step) p.y = (int16_t)(p.y + step);
+    else if (dy < -step) p.y = (int16_t)(p.y - step);
+    else p.y = ty;
+}
+
+static bool nearTarget(const Particle& p, int16_t tx, int16_t ty) {
+    int16_t dx = (int16_t)(tx - p.x);
+    int16_t dy = (int16_t)(ty - p.y);
+    if (dx < 0) dx = (int16_t)(-dx);
+    if (dy < 0) dy = (int16_t)(-dy);
+    return dx <= 8 && dy <= 8;
+}
+
+static void activateLadybug(Particle& p) {
+    SegmentPose trunk;
+    if (!Plant.getSegmentPose(0, trunk)) return;
+    p.x = (int16_t)(trunk.x0 << 4);
+    p.y = (int16_t)(trunk.y0 << 4);
+    p.vx = 0;
+    p.vy = 2; // perches still available
+    p.life = 5000;
+    p.maxLife = 5000;
+    p.type = PARTICLE_LADYBUG;
+    p.size = 0; // climbing
+    p.phase = 0;
+    p.tag = 0;
+    p.active = true;
+}
+
+static int8_t pickNectarFlower(bool requireOpen) {
+    FlowerNodePos flowers[MAX_FLOWER_NODES];
+    uint8_t count = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
+    uint8_t matches[MAX_FLOWER_NODES];
+    uint8_t matchCount = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        bool bloom = (flowers[i].stage == BLOOM_MATURE || flowers[i].stage == BLOOM_OPENING);
+        if (requireOpen) {
+            if (flowers[i].isMature && matchCount < MAX_FLOWER_NODES) matches[matchCount++] = i;
+        } else if (bloom && matchCount < MAX_FLOWER_NODES) {
+            matches[matchCount++] = i;
+        }
+    }
+    if (matchCount == 0) return -1;
+    return (int8_t)matches[rand() % matchCount];
+}
+
+static void activateVisitor(Particle& p, int8_t flower, bool nocturnal) {
+    FlowerNodePos flowers[MAX_FLOWER_NODES];
+    uint8_t count = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
+    if (flower < 0 || (uint8_t)flower >= count) return;
+
+    p.x = (int16_t)(flowers[flower].x << 4);
+    p.y = (int16_t)((flowers[flower].y - 1) << 4);
+    p.vx = 0;
+    p.vy = 0;
+    // Sim ticks are ~16ms, so 312–500 ticks is about 5–8 seconds of hovering.
+    p.life = (uint16_t)(312 + (rand() % 189));
+    p.maxLife = p.life;
+    p.type = PARTICLE_NECTAR_VISITOR;
+    p.size = 0; // hovering
+    p.phase = (uint8_t)(rand() % 32);
+    p.tag = (uint8_t)flower;
+    if (nocturnal) p.tag = (uint8_t)(p.tag | 0x80);
+    p.active = true;
+}
+
+static void beginVisitorDart(Particle& p) {
+    int16_t px = (int16_t)(p.x >> 4);
+    p.size = 1;
+    p.life = 36;
+    p.maxLife = 36;
+    p.vx = (px < (SCREEN_WIDTH / 2)) ? (int16_t)-80 : (int16_t)80;
+    p.vy = (int16_t)(-(36 + (rand() % 24)));
+}
+
+static void activateLoamSnail(Particle& p) {
+    int16_t surface = (int16_t)(SCREEN_HEIGHT - SUBSTRATE_HEIGHT);
+    bool fromLeft = (rand() % 2) == 0;
+    int16_t startX = fromLeft ? 8 : (int16_t)(SCREEN_WIDTH - 12);
+    p.x = (int16_t)(startX << 4);
+    p.y = (int16_t)((surface + 12) << 4); // lower humus loam
+    p.vx = fromLeft ? 1 : -1;
+    p.vy = 0;
+    p.life = 40000; // safety cap; the crawl itself is the several-minute crossing
+    p.maxLife = 40000;
+    p.type = PARTICLE_LOAM_SNAIL;
+    p.size = 1;
+    p.phase = 0;
+    p.tag = 0;
+    p.active = true;
+}
+
+static void updateLadybug(Particle& p) {
+    SegmentPose pose;
+    if (!Plant.getSegmentPose(p.tag, pose)) {
+        p.active = false;
+        return;
+    }
+
+    if (p.size == 1) {
+        p.x = (int16_t)(pose.leafX << 4);
+        p.y = (int16_t)(pose.leafY << 4);
+        if (p.vx > 0) p.vx--;
+        if (p.vx > 0) return;
+
+        p.size = 0;
+        int8_t child = firstChildSegment(p.tag);
+        if (child < 0) {
+            p.active = false;
+            return;
+        }
+        p.tag = (uint8_t)child;
+        return;
+    }
+
+    int16_t tx = (int16_t)(pose.x1 << 4);
+    int16_t ty = (int16_t)(pose.y1 << 4);
+    if (!nearTarget(p, tx, ty)) {
+        stepToward(p, tx, ty, 5);
+        return;
+    }
+
+    p.x = tx;
+    p.y = ty;
+    int8_t child = firstChildSegment(p.tag);
+    bool perchHere = (p.vy > 0) && (pose.broadLeaf || (pose.hasLeaf && child < 0));
+    if (perchHere) {
+        p.size = 1;
+        p.vx = (int16_t)(200 + (rand() % 120)); // about 3–5 seconds on the leaf
+        p.vy--;
+        p.x = (int16_t)(pose.leafX << 4);
+        p.y = (int16_t)(pose.leafY << 4);
+        return;
+    }
+    if (child < 0) {
+        p.active = false;
+        return;
+    }
+    p.tag = (uint8_t)child;
+}
+
+static void updateVisitor(Particle& p) {
+    if (p.size == 1) {
+        p.x = (int16_t)(p.x + p.vx);
+        p.y = (int16_t)(p.y + p.vy);
+        return;
+    }
+
+    uint8_t idx = (uint8_t)(p.tag & 0x7F);
+    FlowerNodePos flowers[MAX_FLOWER_NODES];
+    uint8_t count = Plant.getFlowerNodes(flowers, MAX_FLOWER_NODES);
+    if (idx >= count) {
+        beginVisitorDart(p);
+        p.x = (int16_t)(p.x + p.vx);
+        p.y = (int16_t)(p.y + p.vy);
+        return;
+    }
+
+    int16_t wobX = (int16_t)(fastSin(p.phase) >> 3);
+    int16_t wobY = (int16_t)(fastSin((uint8_t)(p.phase + 8)) >> 4);
+    p.x = (int16_t)((flowers[idx].x << 4) + wobX);
+    p.y = (int16_t)(((flowers[idx].y - 1) << 4) + wobY);
+}
+
+static void updateLoamSnail(Particle& p) {
+    // One subpixel every 8 ticks ≈ 0.5 px/s, so a crossing takes several minutes.
+    if ((p.phase & 7) == 0) {
+        p.x = (int16_t)(p.x + ((p.vx < 0) ? -1 : 1));
+    }
+}
+
+static uint16_t ladybugColor(uint8_t index) {
+    if (index == 1) return rgb565(24, 16, 16);
+    if (index == 2) return rgb565(214, 32, 36);
+    if (index == 3) return rgb565(255, 110, 80);
+    return 0;
+}
+
+static uint16_t birdColor(uint8_t index) {
+    if (index == 1) return rgb565(18, 150, 72);
+    if (index == 2) return rgb565(200, 28, 52);
+    if (index == 3) return rgb565(232, 196, 48);
+    return 0;
+}
+
+static uint16_t mothColor(uint8_t index) {
+    if (index == 1) return rgb565(186, 176, 148);
+    if (index == 2) return rgb565(96, 72, 48);
+    if (index == 3) return rgb565(40, 32, 28);
+    return 0;
+}
+
+static uint16_t snailColor(uint8_t index) {
+    if (index == 1) return rgb565(148, 100, 58);
+    if (index == 2) return rgb565(198, 158, 104);
+    if (index == 3) return rgb565(72, 50, 34);
+    if (index == 4) return rgb565(112, 78, 48);
+    return 0;
+}
+
+static void blitSprite(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight,
+                       int16_t originX, int16_t originY, const uint8_t* cells,
+                       uint8_t spriteW, uint8_t spriteH, bool flipX, uint16_t (*colorOf)(uint8_t)) {
+    for (uint8_t row = 0; row < spriteH; row++) {
+        for (uint8_t col = 0; col < spriteW; col++) {
+            uint8_t srcCol = flipX ? (uint8_t)(spriteW - 1 - col) : col;
+            uint8_t index = cells[(row * spriteW) + srcCol];
+            if (index == 0) continue;
+            plotParticle(buffer, screenWidth, screenHeight,
+                         (int16_t)(originX + col), (int16_t)(originY + row), colorOf(index));
+        }
+    }
+}
+
+static void renderCreature(uint16_t* buffer, int16_t screenWidth, int16_t screenHeight, const Particle& p) {
+    int16_t px = (int16_t)(p.x >> 4);
+    int16_t py = (int16_t)(p.y >> 4);
+
+    if (p.type == PARTICLE_LADYBUG) {
+        static const uint8_t frames[2][16] = {
+            {0, 1, 1, 0,  2, 1, 2, 1,  2, 2, 2, 2,  0, 2, 2, 0},
+            {0, 1, 1, 0,  1, 2, 2, 1,  2, 2, 2, 2,  2, 0, 0, 2}
+        };
+        bool walking = (p.size == 0);
+        const uint8_t* cells = frames[walking && ((p.phase & 8) != 0) ? 1 : 0];
+        bool flip = false;
+        SegmentPose pose;
+        if (Plant.getSegmentPose(p.tag, pose)) flip = pose.x1 < pose.x0;
+        blitSprite(buffer, screenWidth, screenHeight, (int16_t)(px - 1), (int16_t)(py - 2),
+                   cells, 4, 4, flip, ladybugColor);
+        return;
+    }
+
+    if (p.type == PARTICLE_NECTAR_VISITOR) {
+        static const uint8_t bird[2][36] = {
+            {1, 0, 1, 1, 0, 1,
+             1, 1, 1, 1, 1, 1,
+             0, 1, 2, 2, 1, 0,
+             0, 0, 1, 1, 0, 0,
+             0, 0, 3, 3, 0, 0,
+             0, 0, 3, 0, 0, 0},
+            {0, 0, 1, 1, 0, 0,
+             0, 1, 1, 1, 1, 0,
+             1, 1, 2, 2, 1, 1,
+             0, 0, 1, 1, 0, 0,
+             0, 0, 3, 3, 0, 0,
+             0, 0, 3, 0, 0, 0}
+        };
+        static const uint8_t moth[2][36] = {
+            {1, 0, 0, 0, 0, 1,
+             1, 1, 2, 2, 1, 1,
+             0, 1, 2, 2, 1, 0,
+             0, 0, 2, 2, 0, 0,
+             0, 0, 3, 3, 0, 0,
+             0, 0, 0, 0, 0, 0},
+            {0, 0, 0, 0, 0, 0,
+             0, 1, 0, 0, 1, 0,
+             1, 1, 2, 2, 1, 1,
+             0, 1, 2, 2, 1, 0,
+             0, 0, 3, 3, 0, 0,
+             0, 0, 0, 0, 0, 0}
+        };
+        bool mothSprite = (p.tag & 0x80) != 0;
+        uint8_t frame = ((p.phase & 2) != 0) ? 1 : 0;
+        const uint8_t* cells = mothSprite ? moth[frame] : bird[frame];
+        blitSprite(buffer, screenWidth, screenHeight, (int16_t)(px - 3), (int16_t)(py - 6),
+                   cells, 6, 6, false, mothSprite ? mothColor : birdColor);
+        return;
+    }
+
+    if (p.type == PARTICLE_LOAM_SNAIL) {
+        static const uint8_t frames[2][20] = {
+            {0, 1, 1, 1, 0,
+             0, 1, 2, 1, 3,
+             4, 4, 4, 4, 0,
+             0, 4, 0, 0, 0},
+            {0, 1, 1, 1, 3,
+             0, 1, 2, 1, 0,
+             4, 4, 4, 4, 0,
+             0, 4, 0, 0, 0}
+        };
+        const uint8_t* cells = frames[(p.phase & 16) ? 1 : 0];
+        blitSprite(buffer, screenWidth, screenHeight, (int16_t)(px - 2), (int16_t)(py - 3),
+                   cells, 5, 4, p.vx < 0, snailColor);
+    }
+}
+
 void ParticleSystem::spawnSeasonal(uint32_t now, TimePhase phase, WeatherType weather,
                                    uint8_t humidityPct, uint8_t month, uint8_t day) {
     Season season = SEASON_SUMMER;
@@ -403,6 +712,48 @@ void ParticleSystem::spawnSeasonal(uint32_t now, TimePhase phase, WeatherType we
         int8_t slot = findFreeSlot();
         if (slot >= 0) activateOxygenMote(_pool[slot]);
         _lastBubbleSpawn = now;
+    }
+}
+
+bool ParticleSystem::hasActive(uint8_t type) const {
+    for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
+        if (_pool[i].active && _pool[i].type == type) return true;
+    }
+    return false;
+}
+
+void ParticleSystem::spawnFauna(uint32_t now, TimePhase phase) {
+    // First appearance is soon after boot; later visits stay occasional.
+    uint32_t ladybugInterval = (_lastLadybugSpawn == 0) ? 8000u : 60000u;
+    if ((now - _lastLadybugSpawn) >= ladybugInterval) {
+        _lastLadybugSpawn = now;
+        if (!hasActive(PARTICLE_LADYBUG) && Plant.getSegmentCount() > 0) {
+            int8_t slot = findFreeSlot();
+            if (slot >= 0) activateLadybug(_pool[slot]);
+        }
+    }
+
+    uint32_t visitorInterval = (_lastVisitorSpawn == 0) ? 5000u : 40000u;
+    if ((now - _lastVisitorSpawn) >= visitorInterval) {
+        _lastVisitorSpawn = now;
+        if (!hasActive(PARTICLE_NECTAR_VISITOR)) {
+            bool nocturnal = (phase == PHASE_DUSK || phase == PHASE_NIGHT);
+            int8_t flower = pickNectarFlower(!nocturnal);
+            if (flower < 0) flower = pickNectarFlower(false);
+            if (flower >= 0) {
+                int8_t slot = findFreeSlot();
+                if (slot >= 0) activateVisitor(_pool[slot], flower, nocturnal);
+            }
+        }
+    }
+
+    uint32_t snailInterval = (_lastSnailSpawn == 0) ? 7000u : 45000u;
+    if ((now - _lastSnailSpawn) >= snailInterval) {
+        _lastSnailSpawn = now;
+        if (!hasActive(PARTICLE_LOAM_SNAIL)) {
+            int8_t slot = findFreeSlot();
+            if (slot >= 0) activateLoamSnail(_pool[slot]);
+        }
     }
 }
 
@@ -453,6 +804,7 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
     // Seasonal motes only take a free pool slot, and they yield once the pool is half full
     // so rain, snow, fog, watering, pollen, and spores keep a path in.
     spawnSeasonal(now, phase, weather, humidityPct, month, day);
+    spawnFauna(now, phase);
 
     // Update active particles
     for (uint8_t i = 0; i < MAX_PARTICLES; i++) {
@@ -460,8 +812,12 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
         if (!p.active) continue;
 
         if (p.life == 0) {
-            p.active = false;
-            continue;
+            if (p.type == PARTICLE_NECTAR_VISITOR && p.size == 0) {
+                beginVisitorDart(p);
+            } else {
+                p.active = false;
+                continue;
+            }
         }
         p.life--;
 
@@ -506,6 +862,12 @@ void ParticleSystem::update(uint32_t deltaMs, TimePhase phase, WeatherType weath
             int16_t drift = gustDrift(p.phase, (uint8_t)(i * 5));
             p.x += (int16_t)(p.vx + drift);
             p.y += (int16_t)(p.vy + (fastSin((uint8_t)(p.phase + 8)) >> 6));
+        } else if (p.type == PARTICLE_LADYBUG) {
+            updateLadybug(p);
+        } else if (p.type == PARTICLE_NECTAR_VISITOR) {
+            updateVisitor(p);
+        } else if (p.type == PARTICLE_LOAM_SNAIL) {
+            updateLoamSnail(p);
         } else if (p.type == PARTICLE_MIST_DROP) {
             // Glass droplets cling, then run downward. Falling rain mist is already faster.
             if (p.vy < 10) {
@@ -726,6 +1088,9 @@ void ParticleSystem::render(uint16_t* buffer, int16_t screenWidth, int16_t scree
                 plotParticle(buffer, screenWidth, screenHeight, (int16_t)(px - 1), (int16_t)(py + 1), body);
                 plotParticle(buffer, screenWidth, screenHeight, px, (int16_t)(py + 1), shade);
             }
+        }
+        else if (p.type == PARTICLE_LADYBUG || p.type == PARTICLE_NECTAR_VISITOR || p.type == PARTICLE_LOAM_SNAIL) {
+            renderCreature(buffer, screenWidth, screenHeight, p);
         }
     }
 }

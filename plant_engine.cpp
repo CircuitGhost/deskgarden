@@ -1050,6 +1050,23 @@ uint8_t PlantEngine::getFlowerNodes(FlowerNodePos* outArray, uint8_t maxCount) c
     return count;
 }
 
+bool PlantEngine::getSegmentPose(uint8_t index, SegmentPose& out) const {
+    if (index >= _segmentCount) return false;
+    const PlantSegment& seg = _segments[index];
+    if (!seg.active) return false;
+
+    out.x0 = seg.curX0;
+    out.y0 = seg.curY0;
+    out.x1 = seg.curX1;
+    out.y1 = seg.curY1;
+    out.hasLeaf = seg.hasLeaf;
+    out.broadLeaf = seg.hasLeaf && (seg.leafWidth >= 4);
+    out.leafX = seg.curX1;
+    out.leafY = seg.curY1;
+    out.parentIndex = seg.parentIndex;
+    return true;
+}
+
 void PlantEngine::generateRoots() {
     _rootCount = 0;
     int16_t rx = SCREEN_WIDTH / 2; // 86

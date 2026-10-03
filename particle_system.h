@@ -22,7 +22,10 @@ enum ParticleType : uint8_t {
     PARTICLE_NOCTURNAL_SPORE,   // 23:00–05:00: softly glowing spore mote
     PARTICLE_GOLDEN_SPARKLE,    // Brief golden cross where pollen meets a neighbor
     PARTICLE_FALLING_LEAF,      // Autumn: russet, ochre, or crimson leaf on a gust
-    PARTICLE_BLOSSOM_PETAL      // Spring: sakura petal in the shower
+    PARTICLE_BLOSSOM_PETAL,     // Spring: sakura petal in the shower
+    PARTICLE_LADYBUG,           // 4×4 beetle climbing stems and perching on leaves
+    PARTICLE_NECTAR_VISITOR,    // 6×6 hummingbird or pygmy moth at a flower
+    PARTICLE_LOAM_SNAIL         // Slow crawl across the loam strata
 };
 
 struct Particle {
@@ -66,11 +69,16 @@ private:
     uint32_t _lastLeafSpawn;
     uint32_t _lastPetalSpawn;
     uint32_t _lastBubbleSpawn;
+    uint32_t _lastLadybugSpawn;
+    uint32_t _lastVisitorSpawn;
+    uint32_t _lastSnailSpawn;
     uint8_t _globalPhase;
 
     void spawnAmbient(TimePhase phase, WeatherType weather, uint8_t humidityPct, uint8_t precipIntensity);
     void spawnSeasonal(uint32_t now, TimePhase phase, WeatherType weather,
                        uint8_t humidityPct, uint8_t month, uint8_t day);
+    void spawnFauna(uint32_t now, TimePhase phase);
+    bool hasActive(uint8_t type) const;
     int8_t findFreeSlot();
     void tryCrossPollinate(Particle& mote, uint32_t now);
 };

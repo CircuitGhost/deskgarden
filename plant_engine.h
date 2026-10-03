@@ -103,6 +103,15 @@ struct FlowerNodePos {
     bool isMature;
 };
 
+struct SegmentPose {
+    int16_t x0, y0;
+    int16_t x1, y1;
+    bool hasLeaf;
+    bool broadLeaf;
+    int16_t leafX, leafY;
+    int8_t parentIndex;
+};
+
 #define MAX_SOIL_SEED_PODS 6
 
 struct SoilSeedPod {
@@ -156,6 +165,7 @@ public:
     // Foliage & Flower telemetry for particle physics
     uint8_t getActiveLeafNodes(LeafNodePos* outArray, uint8_t maxCount) const;
     uint8_t getFlowerNodes(FlowerNodePos* outArray, uint8_t maxCount) const;
+    bool getSegmentPose(uint8_t index, SegmentPose& out) const;
 
     const PlantGenome& getGenome() const { return _genome; }
     uint8_t getSegmentCount() const { return _segmentCount; }
