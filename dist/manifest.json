@@ -1,0 +1,13 @@
+{
+  "name": "Deskflower",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C6",
+      "parts": [
+        { "path": "bin/deskflower.ino.merged.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

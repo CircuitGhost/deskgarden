@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deskflower 🌸 | Web Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text-main: #f9fafb;
+      --text-muted: #9ca3af;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --green: #34d399;
+      --amber: #fbbf24;
+      --pink: #f472b6;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 640px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 9999px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #f472b6 0%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .card {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 36px 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 32px;
+    }
+    .hardware-tag {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+    .hardware-tag strong {
+      color: var(--text-main);
+    }
+    .flasher-wrapper {
+      margin: 12px 0 24px 0;
+      min-height: 48px;
+    }
+    esp-web-install-button {
+      --esp-tools-button-border-radius: 12px;
+      --esp-tools-button-color: #0284c7;
+      --esp-tools-button-text-color: #ffffff;
+      --esp-tools-button-font-size: 16px;
+      --esp-tools-button-font-weight: 700;
+      --esp-tools-button-padding: 14px 32px;
+    }
+    .steps {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      text-align: left;
+      margin-top: 12px;
+    }
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .step-num {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text strong {
+      color: var(--text-main);
+    }
+    .grid-info {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    @media (max-width: 540px) {
+      .grid-info {
+        grid-template-columns: 1fr;
+      }
+    }
+    .info-box {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: left;
+    }
+    .info-box h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .info-box ul {
+      list-style: none;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+    .info-box ul li strong {
+      color: var(--text-main);
+    }
+    footer {
+      font-size: 12px;
+      color: #4b5563;
+      text-align: center;
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">🌸 ESP32-C6 Botanical Terrarium</div>
+    <h1>Deskflower Web Flasher</h1>
+    <p class="subtitle">Flash the complete Deskflower firmware to your Waveshare ESP32-C6-LCD-1.47 with one click directly from your browser.</p>
+
+    <div class="card">
+      <div class="hardware-tag">
+        Target Device: <strong>Waveshare ESP32-C6-LCD-1.47 (ST7789 172×320 IPS)</strong>
+      </div>
+
+      <div class="flasher-wrapper">
+        <esp-web-install-button manifest="manifest.json">
+          <button slot="activate" style="padding: 14px 32px; background: #0284c7; color: white; border: none; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);">
+            ✨ Install Deskflower
+          </button>
+          <span slot="unsupported">
+            ⚠️ Web Serial is not supported in this browser. Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
+          </span>
+          <span slot="not-allowed">
+            ⚠️ Web Serial requires a secure (HTTPS or localhost) connection.
+          </span>
+        </esp-web-install-button>
+      </div>
+
+      <div class="steps">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-text">Connect your <strong>ESP32-C6 board</strong> to your computer via USB-C.</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-text">Click <strong>Install Deskflower</strong> and select the USB Serial port from the popup list.</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-text">Wait ~30 seconds for the flash to complete. Your Deskflower will boot immediately!</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-info">
+      <div class="info-box">
+        <h3>🎮 Controls &amp; Gestures</h3>
+        <ul>
+          <li><strong>Single Click:</strong> Water plant (+22% hydration)</li>
+          <li><strong>Double Click:</strong> Mutate to next generation</li>
+          <li><strong>Hold (> 2s):</strong> Launch Wi-Fi Setup Portal</li>
+        </ul>
+      </div>
+
+      <div class="info-box">
+        <h3>✨ Core Features</h3>
+        <ul>
+          <li><strong>Wi-Fi 6:</strong> SoftAP captive setup at 192.168.4.1</li>
+          <li><strong>Atmosphere:</strong> 5 diurnal time-of-day palettes</li>
+          <li><strong>Weather:</strong> Real-time Open-Meteo sync</li>
+          <li><strong>Memory:</strong> LittleFS state persistence</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer>
+      Deskflower &bull; Open-source under MIT License &bull; <a href="https://github.com/CircuitGhost/deskgarden" target="_blank" rel="noopener">GitHub Repository</a>
+    </footer>
+  </div>
+</body>
+</html>

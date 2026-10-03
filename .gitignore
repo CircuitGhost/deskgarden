@@ -5,6 +5,7 @@ secrets.h
 .pio/
 build/
 *.bin
+!dist/bin/*.bin
 *.elf
 *.hex
 *.map
