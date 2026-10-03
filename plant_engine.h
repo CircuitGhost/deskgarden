@@ -119,7 +119,7 @@ public:
     // Lifecycle, Growth & Diurnal Blooming Animation
     void setGrowthProgress(float progress);
     float getGrowthProgress() const { return _growthProgress; }
-    void updateLifecycle(uint32_t deltaMs, TimePhase phase);
+    void updateLifecycle(uint32_t deltaMs, TimePhase phase, uint8_t hour = 12, uint8_t minute = 0);
 
     // Physics & Wind Sway
     void updatePhysics(uint32_t deltaMs, float windStrength = 1.0f);
@@ -161,6 +161,8 @@ private:
     uint8_t _windPhase;        // Integer phase for harmonic wind
     uint8_t _gustPhase;        // Slow gust envelope phase
     int16_t _curWindOffset;
+    uint32_t _phosphoElapsedMs; // 0.1 Hz vein/petal pulse, wraps every 10s
+    uint8_t _phosphoBlend;      // 0 outside 23:00–05:00, else mint/cyan mix amount
 
     // Fast Pseudo-Random Generator for deterministic genome execution
     uint32_t _prngState;
